@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { supabase } from '@/lib/supabase';
+import { Header } from '@/components/layout/Header';
 
 interface UserProfile {
   id: string;
@@ -102,48 +103,56 @@ function AccountContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-sm text-[#757575]">Loading profile...</p>
+      <>
+        <Header />
+        <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto mb-4" />
+            <p className="text-sm text-[#757575]">Loading profile...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#F5F5F5]">
-        <div className="max-w-2xl mx-auto px-4 py-12">
-          <div className="bg-white border border-[#E5E5E5] p-8 text-center">
-            <div className="w-16 h-16 bg-[#FFEBEE] rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-[#D32F2F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+      <>
+        <Header />
+        <div className="min-h-screen bg-[#F5F5F5]">
+          <div className="max-w-2xl mx-auto px-4 py-12">
+            <div className="bg-white border border-[#E5E5E5] p-8 text-center">
+              <div className="w-16 h-16 bg-[#FFEBEE] rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-[#D32F2F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-[#222222] mb-2">Unable to Load Profile</h2>
+              <p className="text-[#757575] mb-6">{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-6 py-2 bg-[#222222] text-white hover:bg-[#333333] transition-colors"
+              >
+                Try Again
+              </button>
             </div>
-            <h2 className="text-xl font-semibold text-[#222222] mb-2">Unable to Load Profile</h2>
-            <p className="text-[#757575] mb-6">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-[#222222] text-white hover:bg-[#333333] transition-colors"
-            >
-              Try Again
-            </button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5]">
-      {/* Header */}
-      <div className="bg-white border-b border-[#E5E5E5]">
-        <div className="max-w-2xl mx-auto px-4 py-6">
-          <h1 className="text-2xl md:text-3xl font-semibold text-[#222222]">My Account</h1>
-          <p className="text-[#757575] mt-1">View and manage your profile</p>
+    <>
+      <Header />
+      <div className="min-h-screen bg-[#F5F5F5]">
+        {/* Page Title */}
+        <div className="bg-white border-b border-[#E5E5E5]">
+          <div className="max-w-2xl mx-auto px-4 py-6">
+            <h1 className="text-2xl md:text-3xl font-semibold text-[#222222]">My Account</h1>
+            <p className="text-[#757575] mt-1">View and manage your profile</p>
+          </div>
         </div>
-      </div>
 
       <div className="max-w-2xl mx-auto px-4 py-8">
         {/* Profile Card */}
@@ -294,6 +303,7 @@ function AccountContent() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

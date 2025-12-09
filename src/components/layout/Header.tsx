@@ -25,6 +25,7 @@ export function Header() {
   const [userStore, setUserStore] = useState<UserStore | null>(null);
   const [storeLoading, setStoreLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   
@@ -76,6 +77,50 @@ export function Header() {
     }
 
     fetchUserStore();
+  }, [user]);
+
+  // Fetch unread message count
+  useEffect(() => {
+    async function fetchUnreadCount() {
+      if (!user) {
+        setUnreadMessageCount(0);
+        return;
+      }
+
+      try {
+        // First get user's conversation IDs
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('id')
+          .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`);
+
+        if (!conversations || conversations.length === 0) {
+          setUnreadMessageCount(0);
+          return;
+        }
+
+        const userConversationIds = conversations.map(c => c.id);
+
+        // Get unread message count
+        const { count } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_read', false)
+          .neq('sender_id', user.id)
+          .in('conversation_id', userConversationIds);
+
+        setUnreadMessageCount(count || 0);
+      } catch (err) {
+        console.error('Error fetching unread count:', err);
+        setUnreadMessageCount(0);
+      }
+    }
+
+    fetchUnreadCount();
+    
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
   }, [user]);
 
   // Close user menu when clicking outside
@@ -202,6 +247,23 @@ export function Header() {
                 </div>
               )}
             </div>
+
+            {/* Messages icon - only show when logged in */}
+            {user && (
+              <Link
+                href="/messages"
+                className="relative flex items-center text-sm font-medium text-[#222222] hover:text-[#F56400] transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                {unreadMessageCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-[#F56400] text-white rounded-full">
+                    {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                  </span>
+                )}
+              </Link>
+            )}
 
             {/* Cart link */}
             <Link

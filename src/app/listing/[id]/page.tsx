@@ -82,6 +82,7 @@ export default function ListingPage() {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isContactingSeller, setIsContactingSeller] = useState(false);
 
   const isOwner = user && listing && user.id === listing.store.user_id;
 
@@ -134,6 +135,62 @@ export default function ListingPage() {
       fetchListing();
     }
   }, [listingId]);
+
+  const handleContactSeller = async () => {
+    if (!user || !listing) {
+      router.push('/auth/signin');
+      return;
+    }
+
+    setIsContactingSeller(true);
+    try {
+      // Check if a conversation already exists for this listing + buyer
+      const { data: existingConvo, error: checkError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('listing_id', listing.id)
+        .eq('buyer_id', user.id)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking conversation:', checkError);
+        alert('Failed to start conversation. Please try again.');
+        return;
+      }
+
+      if (existingConvo) {
+        // Conversation exists, navigate to it
+        router.push(`/messages/${existingConvo.id}`);
+        return;
+      }
+
+      // Create new conversation
+      const { data: newConvo, error: createError } = await supabase
+        .from('conversations')
+        .insert({
+          listing_id: listing.id,
+          buyer_id: user.id,
+          seller_id: listing.store.user_id,
+          status: 'active',
+        })
+        .select('id')
+        .single();
+
+      if (createError) {
+        console.error('Error creating conversation:', createError);
+        alert('Failed to start conversation. Please try again.');
+        return;
+      }
+
+      // Navigate to new conversation
+      router.push(`/messages/${newConvo.id}`);
+    } catch (err) {
+      console.error('Error:', err);
+      alert('An error occurred. Please try again.');
+    } finally {
+      setIsContactingSeller(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!listing) return;
@@ -445,6 +502,27 @@ export default function ListingPage() {
                 {/* Contact Buttons */}
                 {!isOwner && (
                   <div className="space-y-3">
+                    {/* Contact Seller via Messages */}
+                    <button
+                      onClick={handleContactSeller}
+                      disabled={isContactingSeller}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#F56400] hover:bg-[#D95700] disabled:bg-[#E5E5E5] transition-colors text-white font-medium"
+                    >
+                      {isContactingSeller ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Starting conversation...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          Contact Seller
+                        </>
+                      )}
+                    </button>
+
                     {listing.store.telegram_handle && (
                       <a
                         href={`https://t.me/${listing.store.telegram_handle}`}
@@ -481,14 +559,6 @@ export default function ListingPage() {
                         </svg>
                         Call Seller
                       </a>
-                    )}
-                    {!listing.store.telegram_handle && !listing.store.whatsapp_number && !listing.store.phone && (
-                      <Link
-                        href={`/store/${listing.store.slug}`}
-                        className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#F56400] hover:bg-[#D95700] transition-colors text-white font-medium"
-                      >
-                        View Store for Contact Info
-                      </Link>
                     )}
                   </div>
                 )}
