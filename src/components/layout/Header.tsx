@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 const languages = [
   { code: 'hy', label: 'HY' },
@@ -10,14 +11,54 @@ const languages = [
   { code: 'en', label: 'EN' },
 ];
 
+interface UserStore {
+  slug: string;
+  name: string;
+}
+
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState(languages[2]);
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [userStore, setUserStore] = useState<UserStore | null>(null);
+  const [storeLoading, setStoreLoading] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   
   const { user, loading } = useAuth();
+
+  // Fetch user's store when user is available
+  useEffect(() => {
+    async function fetchUserStore() {
+      if (!user) {
+        setUserStore(null);
+        return;
+      }
+
+      setStoreLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('stores')
+          .select('slug, name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (error) {
+          // No store found or error - that's fine
+          setUserStore(null);
+        } else {
+          setUserStore(data);
+        }
+      } catch (err) {
+        console.error('Error fetching user store:', err);
+        setUserStore(null);
+      } finally {
+        setStoreLoading(false);
+      }
+    }
+
+    fetchUserStore();
+  }, [user]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -185,13 +226,25 @@ export function Header() {
                     >
                       My Account
                     </Link>
-                    <Link
-                      href="/my-store"
-                      onClick={() => setIsUserMenuOpen(false)}
-                      className="block px-4 py-2 text-sm text-[#222222] hover:bg-[#F5F5F5]"
-                    >
-                      My Store
-                    </Link>
+                    {storeLoading ? (
+                      <div className="px-4 py-2 text-sm text-[#757575]">Loading...</div>
+                    ) : userStore ? (
+                      <Link
+                        href={`/store/${userStore.slug}`}
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="block px-4 py-2 text-sm text-[#222222] hover:bg-[#F5F5F5]"
+                      >
+                        My Store
+                      </Link>
+                    ) : (
+                      <Link
+                        href="/store/create"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="block px-4 py-2 text-sm text-[#222222] hover:bg-[#F5F5F5]"
+                      >
+                        Create Store
+                      </Link>
+                    )}
                     <Link
                       href="/messages"
                       onClick={() => setIsUserMenuOpen(false)}
@@ -274,15 +327,31 @@ export function Header() {
                       My Account
                     </Link>
                   </li>
-                  <li>
-                    <Link
-                      href="/my-store"
-                      className="block py-3 px-4 text-sm font-medium hover:bg-[#F5F5F5]"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      My Store
-                    </Link>
-                  </li>
+                  {storeLoading ? (
+                    <li>
+                      <div className="py-3 px-4 text-sm text-[#757575]">Loading...</div>
+                    </li>
+                  ) : userStore ? (
+                    <li>
+                      <Link
+                        href={`/store/${userStore.slug}`}
+                        className="block py-3 px-4 text-sm font-medium hover:bg-[#F5F5F5]"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        My Store
+                      </Link>
+                    </li>
+                  ) : (
+                    <li>
+                      <Link
+                        href="/store/create"
+                        className="block py-3 px-4 text-sm font-medium hover:bg-[#F5F5F5]"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Create Store
+                      </Link>
+                    </li>
+                  )}
                   <li>
                     <Link
                       href="/messages"
