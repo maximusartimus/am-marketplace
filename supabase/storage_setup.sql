@@ -45,3 +45,4 @@ USING (bucket_id = 'listing-images');
 -- Verify the bucket was created
 SELECT * FROM storage.buckets WHERE id = 'listing-images';
 
+

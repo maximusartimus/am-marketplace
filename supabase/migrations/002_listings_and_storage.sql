@@ -284,3 +284,4 @@ CREATE TRIGGER update_listings_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_listing_timestamp();
 
+
