@@ -23,28 +23,46 @@ interface UserProfile {
   role: string | null;
 }
 
+interface UserStore {
+  slug: string;
+  name: string;
+}
+
 function AccountContent() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [store, setStore] = useState<UserStore | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchProfile() {
+    async function fetchProfileAndStore() {
       if (!user) return;
 
       try {
-        const { data, error } = await supabase
+        // Fetch profile
+        const { data: profileData, error: profileError } = await supabase
           .from('users')
           .select('id, email, phone, name, profile_photo, language_preference, location_city, location_region, country, address, phone_country_code, created_at, role')
           .eq('id', user.id)
           .single();
 
-        if (error) {
-          console.error('Error fetching profile:', error);
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
           setError('Failed to load profile');
         } else {
-          setProfile(data);
+          setProfile(profileData);
+        }
+
+        // Fetch user's store
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('slug, name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (storeData) {
+          setStore(storeData);
         }
       } catch (err) {
         console.error(err);
@@ -54,7 +72,7 @@ function AccountContent() {
       }
     }
 
-    fetchProfile();
+    fetchProfileAndStore();
   }, [user]);
 
   const formatDate = (dateString: string | null) => {
@@ -241,15 +259,27 @@ function AccountContent() {
           <div className="p-6">
             <h3 className="text-sm font-medium text-[#757575] uppercase tracking-wide mb-4">Quick Links</h3>
             <div className="space-y-2">
-              <Link
-                href="/store/create"
-                className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
-              >
-                <span className="text-[#222222]">My Store</span>
-                <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
+              {store ? (
+                <Link
+                  href={`/store/${store.slug}`}
+                  className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
+                >
+                  <span className="text-[#222222]">My Store</span>
+                  <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              ) : (
+                <Link
+                  href="/store/create"
+                  className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
+                >
+                  <span className="text-[#222222]">Create Store</span>
+                  <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              )}
               <Link
                 href="/listing/create"
                 className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
