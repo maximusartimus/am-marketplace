@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { FavoriteButton } from './FavoriteButton';
 
 interface ListingImage {
   id: string;
@@ -66,6 +67,11 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
             </span>
           </div>
         )}
+
+        {/* Favorite Button */}
+        <div className="absolute top-2 right-2">
+          <FavoriteButton listingId={listing.id} size="small" />
+        </div>
 
         {/* Image Count Badge */}
         {listing.listing_images && listing.listing_images.length > 1 && (

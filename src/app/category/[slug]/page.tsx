@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { SearchFilters, FilterState } from '@/components/search/SearchFilters';
+import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { supabase } from '@/lib/supabase';
 
 interface ListingImage {
@@ -339,6 +340,11 @@ export default function CategoryPage({ params }: PageProps) {
                               </span>
                             </div>
                           )}
+
+                          {/* Favorite Button */}
+                          <div className="absolute top-2 right-2">
+                            <FavoriteButton listingId={listing.id} size="small" />
+                          </div>
 
                           {/* Image Count Badge */}
                           {listing.listing_images && listing.listing_images.length > 1 && (

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { FavoriteButton } from '@/components/listings/FavoriteButton';
 
 interface Listing {
   id: string;
@@ -237,6 +238,11 @@ export function FeaturedListings() {
                     {getConditionLabel(listing.condition)}
                   </span>
                 )}
+
+                {/* Favorite Button */}
+                <div className="absolute top-2 right-2">
+                  <FavoriteButton listingId={listing.id} size="small" />
+                </div>
               </div>
 
               {/* Content */}
