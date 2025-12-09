@@ -160,6 +160,46 @@ export default function ConversationPage() {
     fetchConversation();
   }, [user, authLoading, conversationId, router]);
 
+  // Realtime subscription for new messages
+  useEffect(() => {
+    if (!user || !conversationId) return;
+
+    const channel = supabase
+      .channel(`messages-realtime-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          // Add new message to the messages array
+          // Only if it's not from the current user (to avoid duplicates)
+          const newMessage = payload.new as Message;
+          if (newMessage.sender_id !== user.id) {
+            setMessages((prev) => [...prev, newMessage]);
+            
+            // Mark the incoming message as read since user is viewing the conversation
+            supabase
+              .from('messages')
+              .update({ is_read: true })
+              .eq('id', newMessage.id)
+              .then(() => {
+                // Message marked as read
+              });
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, user?.id]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -410,3 +450,4 @@ export default function ConversationPage() {
     </div>
   );
 }
+

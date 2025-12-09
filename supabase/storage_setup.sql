@@ -46,3 +46,4 @@ USING (bucket_id = 'listing-images');
 SELECT * FROM storage.buckets WHERE id = 'listing-images';
 
 
+
