@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -23,9 +24,26 @@ export function Header() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [userStore, setUserStore] = useState<UserStore | null>(null);
   const [storeLoading, setStoreLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   
   const { user, loading } = useAuth();
+
+  // Handle search submission
+  const handleSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  // Handle Enter key press
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   // Fetch user's store when user is available
   useEffect(() => {
@@ -134,18 +152,21 @@ export function Header() {
 
           {/* Search bar - desktop */}
           <div className="hidden md:flex flex-1 max-w-xl">
-            <div className="flex w-full border border-[#E5E5E5] overflow-hidden focus-within:border-[#222222] transition-colors">
+            <form onSubmit={handleSearch} className="flex w-full border border-[#E5E5E5] overflow-hidden focus-within:border-[#222222] transition-colors">
               <input
                 type="text"
                 placeholder="Search for anything..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
                 className="flex-1 px-4 py-2.5 focus:outline-none text-[#222222] placeholder-[#757575] text-sm"
               />
-              <button className="bg-[#222222] hover:bg-[#333333] px-4 text-white transition-colors">
+              <button type="submit" className="bg-[#222222] hover:bg-[#333333] px-4 text-white transition-colors">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </button>
-            </div>
+            </form>
           </div>
 
           {/* Right side actions */}
@@ -278,18 +299,21 @@ export function Header() {
 
         {/* Mobile search bar */}
         <div className="md:hidden mt-4">
-          <div className="flex w-full border border-[#E5E5E5] overflow-hidden focus-within:border-[#222222] transition-colors">
+          <form onSubmit={handleSearch} className="flex w-full border border-[#E5E5E5] overflow-hidden focus-within:border-[#222222] transition-colors">
             <input
               type="text"
               placeholder="Search for anything..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="flex-1 px-4 py-2.5 focus:outline-none text-[#222222] placeholder-[#757575] text-sm"
             />
-            <button className="bg-[#222222] hover:bg-[#333333] px-4 text-white transition-colors">
+            <button type="submit" className="bg-[#222222] hover:bg-[#333333] px-4 text-white transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
-          </div>
+          </form>
         </div>
       </div>
 

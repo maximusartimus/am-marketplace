@@ -76,7 +76,7 @@ export function FeaturedListings() {
             price: item.price || 0,
             currency: item.currency || 'AMD',
             image: primaryImage?.url || null,
-            storeName: item.store?.name || 'Unknown Store',
+            storeName: item.store?.[0]?.name || 'Unknown Store',
             condition: item.condition || '',
           };
         });

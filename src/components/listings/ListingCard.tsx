@@ -97,3 +97,4 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
     </Link>
   );
 }
+
