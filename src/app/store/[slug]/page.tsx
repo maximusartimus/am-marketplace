@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/layout/Header';
+import { ListingCard } from '@/components/listings/ListingCard';
 
 interface Store {
   id: string;
@@ -31,6 +32,24 @@ interface Store {
   created_at: string;
 }
 
+interface ListingImage {
+  id: string;
+  url: string;
+  position: number;
+  is_primary: boolean;
+}
+
+interface Listing {
+  id: string;
+  title_en: string;
+  price: number;
+  currency: string;
+  condition: 'new' | 'like_new' | 'used' | 'parts';
+  status: string;
+  created_at: string;
+  listing_images: ListingImage[];
+}
+
 export default function StorePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -39,15 +58,17 @@ export default function StorePage() {
   
   const { user, loading: authLoading } = useAuth();
   const [store, setStore] = useState<Store | null>(null);
+  const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const isOwner = user && store && user.id === store.user_id;
 
   useEffect(() => {
-    async function fetchStore() {
+    async function fetchStoreAndListings() {
       try {
-        const { data, error: fetchError } = await supabase
+        // Fetch store
+        const { data: storeData, error: fetchError } = await supabase
           .from('stores')
           .select('*')
           .eq('slug', slug)
@@ -62,7 +83,31 @@ export default function StorePage() {
           return;
         }
 
-        setStore(data);
+        setStore(storeData);
+
+        // Fetch listings for this store
+        const { data: listingsData, error: listingsError } = await supabase
+          .from('listings')
+          .select(`
+            *,
+            listing_images(*)
+          `)
+          .eq('store_id', storeData.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false });
+
+        if (listingsError) {
+          console.error('Error fetching listings:', listingsError);
+        } else {
+          // Sort images by position for each listing
+          const sortedListings = (listingsData || []).map(listing => ({
+            ...listing,
+            listing_images: (listing.listing_images || []).sort(
+              (a: ListingImage, b: ListingImage) => a.position - b.position
+            ),
+          }));
+          setListings(sortedListings);
+        }
       } catch (err) {
         console.error('Error fetching store:', err);
         setError('An unexpected error occurred');
@@ -72,7 +117,7 @@ export default function StorePage() {
     }
 
     if (slug) {
-      fetchStore();
+      fetchStoreAndListings();
     }
   }, [slug]);
 
@@ -384,8 +429,10 @@ export default function StorePage() {
         {/* Listings Section */}
         <div className="pb-12">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-[#222222]">Listings</h2>
-            {isOwner && (
+            <h2 className="text-xl font-semibold text-[#222222]">
+              Listings {listings.length > 0 && <span className="text-[#757575] font-normal">({listings.length})</span>}
+            </h2>
+            {isOwner && isApproved && (
               <Link
                 href="/listing/create"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-[#F56400] hover:bg-[#D95700] transition-colors text-sm font-medium text-white"
@@ -398,31 +445,40 @@ export default function StorePage() {
             )}
           </div>
 
-          {/* Empty State */}
-          <div className="bg-white border border-[#E5E5E5] p-12 text-center">
-            <div className="w-16 h-16 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-              </svg>
+          {/* Listings Grid */}
+          {listings.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+              {listings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} />
+              ))}
             </div>
-            <h3 className="text-lg font-medium text-[#222222] mb-2">No listings yet</h3>
-            <p className="text-[#757575] mb-6 max-w-sm mx-auto">
-              {isOwner 
-                ? "You haven't added any listings yet. Start selling by creating your first listing."
-                : "This store hasn't added any listings yet. Check back later!"}
-            </p>
-            {isOwner && (
-              <Link
-                href="/listing/create"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-[#222222] hover:bg-[#333333] transition-colors font-medium text-white"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          ) : (
+            /* Empty State */
+            <div className="bg-white border border-[#E5E5E5] p-12 text-center">
+              <div className="w-16 h-16 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                 </svg>
-                Create Your First Listing
-              </Link>
-            )}
-          </div>
+              </div>
+              <h3 className="text-lg font-medium text-[#222222] mb-2">No listings yet</h3>
+              <p className="text-[#757575] mb-6 max-w-sm mx-auto">
+                {isOwner 
+                  ? "You haven't added any listings yet. Start selling by creating your first listing."
+                  : "This store hasn't added any listings yet. Check back later!"}
+              </p>
+              {isOwner && isApproved && (
+                <Link
+                  href="/listing/create"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#222222] hover:bg-[#333333] transition-colors font-medium text-white"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Create Your First Listing
+                </Link>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
