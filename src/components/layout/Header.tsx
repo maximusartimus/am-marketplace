@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -17,6 +18,11 @@ interface UserStore {
   name: string;
 }
 
+interface UserProfile {
+  profile_photo: string | null;
+  name: string | null;
+}
+
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState(languages[2]);
@@ -26,6 +32,7 @@ export function Header() {
   const [storeLoading, setStoreLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   
@@ -77,6 +84,36 @@ export function Header() {
     }
 
     fetchUserStore();
+  }, [user]);
+
+  // Fetch user profile (including profile photo)
+  useEffect(() => {
+    async function fetchUserProfile() {
+      if (!user) {
+        setUserProfile(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('profile_photo, name')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching user profile:', error);
+          setUserProfile(null);
+        } else {
+          setUserProfile(data);
+        }
+      } catch (err) {
+        console.error('Error fetching user profile:', err);
+        setUserProfile(null);
+      }
+    }
+
+    fetchUserProfile();
   }, [user]);
 
   // Fetch unread message count
@@ -138,7 +175,7 @@ export function Header() {
   // Get user display name or email
   const getUserDisplayName = () => {
     if (!user) return '';
-    return user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+    return userProfile?.name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
   };
 
   // Get user initials for avatar
@@ -285,9 +322,19 @@ export function Header() {
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                 >
-                  <div className="w-8 h-8 bg-[#222222] rounded-full flex items-center justify-center text-white text-xs font-medium">
-                    {getUserInitials()}
-                  </div>
+                  {userProfile?.profile_photo ? (
+                    <Image
+                      src={userProfile.profile_photo}
+                      alt={getUserDisplayName()}
+                      width={32}
+                      height={32}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 bg-[#222222] rounded-full flex items-center justify-center text-white text-xs font-medium">
+                      {getUserInitials()}
+                    </div>
+                  )}
                   <span className="hidden md:block text-sm font-medium text-[#222222]">
                     {getUserDisplayName()}
                   </span>
