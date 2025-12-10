@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FavoriteButton } from './FavoriteButton';
+import { VerifiedCheckmark } from '@/components/stores/StoreBadges';
 
 interface ListingImage {
   id: string;
@@ -23,6 +24,7 @@ interface ListingCardProps {
       slug: string;
       average_rating?: number;
       total_reviews?: number;
+      is_verified?: boolean;
     };
   };
   showStore?: boolean;
@@ -94,7 +96,10 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
         
         {showStore && listing.store && (
           <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
-            <span>{listing.store.name}</span>
+            <span className="inline-flex items-center gap-0.5">
+              {listing.store.name}
+              {listing.store.is_verified && <VerifiedCheckmark />}
+            </span>
             {listing.store.average_rating && listing.store.average_rating > 0 && (
               <span className="inline-flex items-center text-[#F56400]">
                 <span>★</span>

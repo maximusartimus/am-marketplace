@@ -13,6 +13,9 @@ interface Store {
   approval_status: 'pending' | 'approved' | 'needs_info' | 'rejected';
   created_at: string;
   user_id: string;
+  is_verified: boolean;
+  is_top_seller: boolean;
+  is_featured: boolean;
   user?: {
     name: string;
     email: string;
@@ -41,6 +44,9 @@ export default function AdminStores() {
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'request_info' | null>(null);
   const [actionNotes, setActionNotes] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  
+  // Badge toggle loading states
+  const [badgeLoading, setBadgeLoading] = useState<{ [key: string]: boolean }>({});
 
   const fetchStores = useCallback(async () => {
     setLoading(true);
@@ -53,7 +59,10 @@ export default function AdminStores() {
           slug,
           approval_status,
           created_at,
-          user_id
+          user_id,
+          is_verified,
+          is_top_seller,
+          is_featured
         `, { count: 'exact' });
 
       if (statusFilter !== 'all') {
@@ -170,6 +179,56 @@ export default function AdminStores() {
     setActionNotes('');
   };
 
+  // Handle badge toggle
+  const handleBadgeToggle = async (
+    storeId: string, 
+    badgeType: 'is_verified' | 'is_top_seller' | 'is_featured',
+    currentValue: boolean
+  ) => {
+    if (!user) return;
+    
+    const loadingKey = `${storeId}-${badgeType}`;
+    setBadgeLoading(prev => ({ ...prev, [loadingKey]: true }));
+    
+    try {
+      const updates: Record<string, unknown> = {
+        [badgeType]: !currentValue,
+      };
+      
+      // When verifying, also set verified_at and verified_by
+      if (badgeType === 'is_verified') {
+        if (!currentValue) {
+          // Verifying the store
+          updates.verified_at = new Date().toISOString();
+          updates.verified_by = user.id;
+        } else {
+          // Unverifying the store
+          updates.verified_at = null;
+          updates.verified_by = null;
+        }
+      }
+      
+      const { error } = await supabase
+        .from('stores')
+        .update(updates)
+        .eq('id', storeId);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setStores(prev => prev.map(store => 
+        store.id === storeId 
+          ? { ...store, [badgeType]: !currentValue }
+          : store
+      ));
+    } catch (error) {
+      console.error('Error toggling badge:', error);
+      alert('Failed to update badge. Please try again.');
+    } finally {
+      setBadgeLoading(prev => ({ ...prev, [loadingKey]: false }));
+    }
+  };
+
   const getStatusBadge = (status: Store['approval_status']) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -231,6 +290,9 @@ export default function AdminStores() {
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Badges
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Created
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -242,14 +304,14 @@ export default function AdminStores() {
               {loading ? (
                 [...Array(5)].map((_, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4" colSpan={5}>
+                    <td className="px-6 py-4" colSpan={6}>
                       <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
                     </td>
                   </tr>
                 ))
               ) : stores.length === 0 ? (
                 <tr>
-                  <td className="px-6 py-8 text-center text-gray-500" colSpan={5}>
+                  <td className="px-6 py-8 text-center text-gray-500" colSpan={6}>
                     No stores found
                   </td>
                 </tr>
@@ -270,6 +332,72 @@ export default function AdminStores() {
                     </td>
                     <td className="px-6 py-4">
                       {getStatusBadge(store.approval_status)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {/* Verified Badge Toggle */}
+                        <button
+                          onClick={() => handleBadgeToggle(store.id, 'is_verified', store.is_verified)}
+                          disabled={badgeLoading[`${store.id}-is_verified`]}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                            store.is_verified
+                              ? 'bg-[#1976D2] text-white hover:bg-[#1565C0]'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          } ${badgeLoading[`${store.id}-is_verified`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={store.is_verified ? 'Click to unverify' : 'Click to verify'}
+                        >
+                          {badgeLoading[`${store.id}-is_verified`] ? (
+                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          Verified
+                        </button>
+                        
+                        {/* Top Seller Badge Toggle */}
+                        <button
+                          onClick={() => handleBadgeToggle(store.id, 'is_top_seller', store.is_top_seller)}
+                          disabled={badgeLoading[`${store.id}-is_top_seller`]}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                            store.is_top_seller
+                              ? 'bg-[#F56400] text-white hover:bg-[#D95700]'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          } ${badgeLoading[`${store.id}-is_top_seller`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={store.is_top_seller ? 'Click to remove Top Seller' : 'Click to mark as Top Seller'}
+                        >
+                          {badgeLoading[`${store.id}-is_top_seller`] ? (
+                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          )}
+                          Top Seller
+                        </button>
+                        
+                        {/* Featured Badge Toggle */}
+                        <button
+                          onClick={() => handleBadgeToggle(store.id, 'is_featured', store.is_featured)}
+                          disabled={badgeLoading[`${store.id}-is_featured`]}
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                            store.is_featured
+                              ? 'bg-[#9C27B0] text-white hover:bg-[#7B1FA2]'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          } ${badgeLoading[`${store.id}-is_featured`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          title={store.is_featured ? 'Click to unfeature' : 'Click to feature'}
+                        >
+                          {badgeLoading[`${store.id}-is_featured`] ? (
+                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          Featured
+                        </button>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {new Date(store.created_at).toLocaleDateString()}
