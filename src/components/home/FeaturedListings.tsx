@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { FavoriteButton } from '@/components/listings/FavoriteButton';
+import { VerifiedCheckmark } from '@/components/stores/StoreBadges';
 
 interface Listing {
   id: string;
@@ -13,6 +14,7 @@ interface Listing {
   image: string | null;
   storeName: string;
   storeRating: number | null;
+  storeIsVerified: boolean;
   condition: string;
 }
 
@@ -51,7 +53,7 @@ export function FeaturedListings() {
             price,
             currency,
             condition,
-            store:stores(name, average_rating),
+            store:stores(id, name, slug, is_verified, average_rating),
             listing_images!inner(url, is_primary, position)
           `)
           .eq('status', 'active')
@@ -72,14 +74,18 @@ export function FeaturedListings() {
             || images.find((img: { position: number }) => img.position === 0)
             || images[0];
 
+          // Store is returned as an object (not array) from Supabase foreign key join
+          const store = item.store as { id: string; name: string; slug: string; is_verified: boolean; average_rating: number | null } | null;
+
           return {
             id: item.id,
             title: item.title_en || 'Untitled',
             price: item.price || 0,
             currency: item.currency || 'AMD',
             image: primaryImage?.url || null,
-            storeName: item.store?.[0]?.name || 'Unknown Store',
-            storeRating: item.store?.[0]?.average_rating || null,
+            storeName: store?.name || 'Unknown Store',
+            storeRating: store?.average_rating || null,
+            storeIsVerified: store?.is_verified || false,
             condition: item.condition || '',
           };
         });
@@ -253,7 +259,10 @@ export function FeaturedListings() {
                   {listing.title}
                 </h3>
                 <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
-                  <span>{listing.storeName}</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    {listing.storeName}
+                    {listing.storeIsVerified && <VerifiedCheckmark />}
+                  </span>
                   {listing.storeRating && listing.storeRating > 0 && (
                     <span className="inline-flex items-center text-[#F56400]">
                       <span>★</span>
