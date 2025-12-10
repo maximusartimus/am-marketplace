@@ -2,6 +2,7 @@ import { Header } from '@/components/layout/Header';
 import { Hero } from '@/components/home/Hero';
 import { CategoryGrid } from '@/components/home/CategoryGrid';
 import { FeaturedListings } from '@/components/home/FeaturedListings';
+import { RecentlyViewed } from '@/components/home/RecentlyViewed';
 import { Footer } from '@/components/layout/Footer';
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
         <Hero />
         <CategoryGrid />
         <FeaturedListings />
+        <RecentlyViewed />
       </main>
       <Footer />
     </div>

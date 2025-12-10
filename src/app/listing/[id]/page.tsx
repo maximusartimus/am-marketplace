@@ -243,6 +243,30 @@ export default function ListingPage() {
     }
   }, [listingId]);
 
+  // Track recently viewed for logged-in users
+  useEffect(() => {
+    async function trackRecentlyViewed() {
+      // Only track for logged-in users
+      if (!user || !listing) return;
+      
+      // Don't track if user is viewing their own listing
+      if (user.id === listing.store.user_id) return;
+
+      try {
+        await supabase
+          .from('recently_viewed')
+          .upsert(
+            { user_id: user.id, listing_id: listingId, viewed_at: new Date().toISOString() },
+            { onConflict: 'user_id,listing_id' }
+          );
+      } catch {
+        // Fail silently - don't show errors to user
+      }
+    }
+
+    trackRecentlyViewed();
+  }, [user, listing, listingId]);
+
   const handleContactSeller = async () => {
     if (!user || !listing) {
       router.push('/auth/signin');

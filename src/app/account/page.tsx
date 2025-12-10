@@ -327,6 +327,21 @@ function AccountContent() {
                 </svg>
               </Link>
               <Link
+                href="/account/recently-viewed"
+                className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
+              >
+                <span className="text-[#222222] flex items-center gap-2">
+                  <svg className="w-5 h-5 text-[#9C27B0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  Recently Viewed
+                </span>
+                <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+              <Link
                 href="/account/settings"
                 className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
               >
