@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/Header';
 import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { FollowButton } from '@/components/stores/FollowButton';
 import { StoreBadges } from '@/components/stores/StoreBadges';
+import { ReportModal } from '@/components/ui/ReportModal';
 
 interface ListingImage {
   id: string;
@@ -164,6 +165,7 @@ export default function ListingPage() {
   const [reviewCount, setReviewCount] = useState<number>(0);
   const [storeReviews, setStoreReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const isOwner = user && listing && user.id === listing.store.user_id;
 
@@ -689,13 +691,29 @@ export default function ListingPage() {
               </div>
 
               {/* Listing Meta */}
-              <div className="text-sm text-[#757575]">
-                <p>Listed {new Date(listing.created_at).toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric', 
-                  year: 'numeric' 
-                })}</p>
-                <p>{listing.view_count.toLocaleString()} views</p>
+              <div className="flex items-start justify-between">
+                <div className="text-sm text-[#757575]">
+                  <p>Listed {new Date(listing.created_at).toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                  })}</p>
+                  <p>{listing.view_count.toLocaleString()} views</p>
+                </div>
+                
+                {/* Report Button - only for logged-in users who are NOT the owner */}
+                {user && !isOwner && (
+                  <button
+                    onClick={() => setShowReportModal(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-[#757575] hover:text-[#D32F2F] transition-colors"
+                    title="Report this listing"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                    </svg>
+                    Report
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -911,6 +929,18 @@ export default function ListingPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Report Modal */}
+        {user && (
+          <ReportModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            reportType="listing"
+            reporterId={user.id}
+            listingId={listing.id}
+            targetName={listing.title_en}
+          />
         )}
       </div>
     </>

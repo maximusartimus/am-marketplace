@@ -9,6 +9,7 @@ import { Header } from '@/components/layout/Header';
 import { ListingCard } from '@/components/listings/ListingCard';
 import { FollowButton } from '@/components/stores/FollowButton';
 import { StoreBadges } from '@/components/stores/StoreBadges';
+import { ReportModal } from '@/components/ui/ReportModal';
 
 interface Store {
   id: string;
@@ -172,6 +173,9 @@ export default function StorePage() {
   const [editResponseLoading, setEditResponseLoading] = useState(false);
   const [deletingResponseId, setDeletingResponseId] = useState<string | null>(null);
   const [deleteResponseLoading, setDeleteResponseLoading] = useState(false);
+  
+  // Report modal state
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const isOwner = user && store && user.id === store.user_id;
 
@@ -750,6 +754,20 @@ export default function StorePage() {
                     />
                   )}
                   
+                  {/* Report Store Button - only for logged-in users who are NOT the owner */}
+                  {user && !isOwner && (
+                    <button
+                      onClick={() => setShowReportModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs text-[#757575] hover:text-[#D32F2F] border border-[#E5E5E5] hover:border-[#D32F2F] transition-colors"
+                      title="Report this store"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                      </svg>
+                      Report
+                    </button>
+                  )}
+                  
                   {/* Owner Edit Button */}
                   {isOwner && (
                     <Link
@@ -1293,6 +1311,18 @@ export default function StorePage() {
           )}
         </div>
       </div>
+
+      {/* Report Modal */}
+      {user && store && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          reportType="store"
+          reporterId={user.id}
+          storeId={store.id}
+          targetName={store.name}
+        />
+      )}
     </div>
     </>
   );

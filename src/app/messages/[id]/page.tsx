@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/layout/Header';
+import { ReportModal } from '@/components/ui/ReportModal';
 
 interface User {
   id: string;
@@ -61,6 +62,9 @@ export default function ConversationPage() {
   const [error, setError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -290,6 +294,38 @@ export default function ConversationPage() {
     }
   };
 
+  const handleDeleteConversation = async () => {
+    if (!conversation || !user) return;
+
+    // Verify user is a participant
+    if (conversation.buyer_id !== user.id && conversation.seller_id !== user.id) {
+      setError('You do not have permission to delete this conversation');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { error: deleteError } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversation.id);
+
+      if (deleteError) {
+        console.error('Error deleting conversation:', deleteError);
+        setError('Failed to delete conversation');
+        return;
+      }
+
+      // Redirect to messages list
+      router.push('/messages');
+    } catch (err) {
+      console.error('Error:', err);
+      setError('An unexpected error occurred');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading || authLoading) {
     return (
       <div className="h-screen flex flex-col">
@@ -338,15 +374,45 @@ export default function ConversationPage() {
         <div className="max-w-[800px] mx-auto w-full flex-1 flex flex-col min-h-0">
           {/* Back button and Listing Info Header - fixed at top */}
           <div className="flex-shrink-0 bg-white border-b border-[#E5E5E5] px-4 md:px-6 py-4">
-            <Link
-              href="/messages"
-              className="inline-flex items-center gap-2 text-sm text-[#757575] hover:text-[#222222] mb-4"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Messages
-            </Link>
+            {/* Top row with Back button and Report button */}
+            <div className="flex items-center justify-between mb-4">
+              <Link
+                href="/messages"
+                className="inline-flex items-center gap-2 text-sm text-[#757575] hover:text-[#222222]"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to Messages
+              </Link>
+              
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                {/* Delete Conversation Button */}
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#757575] hover:text-[#D32F2F] border border-[#E5E5E5] hover:border-[#D32F2F] transition-colors rounded"
+                  title="Delete conversation"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+
+                {/* Report User Button */}
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#757575] hover:text-[#D32F2F] border border-[#E5E5E5] hover:border-[#D32F2F] transition-colors rounded"
+                  title="Report this user"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                  </svg>
+                  Report
+                </button>
+              </div>
+            </div>
 
             <Link
               href={`/listing/${conversation.listing.id}`}
@@ -447,6 +513,59 @@ export default function ConversationPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div 
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowDeleteModal(false)}
+          />
+          <div className="relative bg-white w-full max-w-md mx-4 p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-[#222222] mb-2">
+              Delete this conversation?
+            </h2>
+            <p className="text-[#757575] mb-6">
+              This will permanently delete all messages. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-[#222222] border border-[#E5E5E5] hover:bg-[#F5F5F5] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConversation}
+                disabled={deleting}
+                className="px-4 py-2 bg-[#D32F2F] text-white hover:bg-[#B71C1C] transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report User Modal */}
+      {user && conversation && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          reportType="user"
+          reporterId={user.id}
+          userId={conversation.buyer_id === user.id ? conversation.seller_id : conversation.buyer_id}
+          targetName={getOtherUserName()}
+        />
+      )}
     </div>
   );
 }
