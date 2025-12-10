@@ -83,7 +83,7 @@ function FollowingContent() {
             .filter(f => f.store) // Filter out any null stores
             .map(f => ({
               ...f,
-              store: f.store as FollowedStore['store'],
+              store: f.store as unknown as FollowedStore['store'],
               follower_count: countMap[f.store_id] || 0,
             }));
 

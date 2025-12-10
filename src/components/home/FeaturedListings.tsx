@@ -75,7 +75,7 @@ export function FeaturedListings() {
             || images[0];
 
           // Store is returned as an object (not array) from Supabase foreign key join
-          const store = item.store as { id: string; name: string; slug: string; is_verified: boolean; average_rating: number | null } | null;
+          const store = item.store as unknown as { id: string; name: string; slug: string; is_verified: boolean; average_rating: number | null } | null;
 
           return {
             id: item.id,
