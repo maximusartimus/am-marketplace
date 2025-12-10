@@ -122,3 +122,4 @@ export function FavoriteButton({ listingId, size = 'small', className = '' }: Fa
   );
 }
 
+
