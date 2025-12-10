@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { VerifiedCheckmark } from '@/components/stores/StoreBadges';
+import { Promotion, isPromotionActive } from '@/lib/promotions';
 
 interface ListingImage {
   url: string;
@@ -28,6 +29,7 @@ interface Listing {
   status: string;
   store: Store;
   images: ListingImage[];
+  listing_promotions?: Promotion[];
 }
 
 interface RecentlyViewedItem {
@@ -69,7 +71,7 @@ export function RecentlyViewed() {
       try {
         const { data } = await supabase
           .from('recently_viewed')
-          .select('listing_id, viewed_at, listing:listings(id, title_en, price, currency, condition, status, store:stores(name, slug, is_verified, average_rating), images:listing_images(url, position))')
+          .select('listing_id, viewed_at, listing:listings(id, title_en, price, currency, condition, status, store:stores(name, slug, is_verified, average_rating), images:listing_images(url, position), listing_promotions(*))')
           .eq('user_id', user.id)
           .order('viewed_at', { ascending: false })
           .limit(8);
@@ -171,6 +173,10 @@ export function RecentlyViewed() {
             // Get primary image (first by position)
             const sortedImages = [...(listing.images || [])].sort((a, b) => a.position - b.position);
             const primaryImage = sortedImages[0];
+            
+            // Check for active promotion
+            const activePromotion = listing.listing_promotions?.find(p => isPromotionActive(p));
+            const currencySymbol = listing.currency === 'AMD' ? '֏' : '$';
 
             return (
               <Link
@@ -205,11 +211,29 @@ export function RecentlyViewed() {
                     </div>
                   )}
 
-                  {/* Condition badge - bottom left */}
+                  {/* Sale Badge */}
+                  {activePromotion && (
+                    <div className="absolute top-2 left-2 z-10">
+                      <span className="px-2 py-0.5 text-xs font-bold bg-[#F56400] text-white">
+                        SALE
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Condition badge - adjusted position if sale is active */}
                   {getConditionLabel(listing.condition) && (
-                    <span className="absolute bottom-3 left-3 bg-white px-2 py-1 text-[10px] font-semibold tracking-wide text-[#222222] uppercase">
+                    <span className={`absolute left-3 bg-white px-2 py-1 text-[10px] font-semibold tracking-wide text-[#222222] uppercase ${
+                      activePromotion ? 'top-9' : 'bottom-3'
+                    }`}>
                       {getConditionLabel(listing.condition)}
                     </span>
+                  )}
+
+                  {/* Discount Badge */}
+                  {activePromotion && (
+                    <div className="absolute bottom-3 left-3 bg-[#F56400] text-white text-xs font-bold px-1.5 py-0.5">
+                      -{activePromotion.discount_percent}%
+                    </div>
                   )}
 
                   {/* Favorite Button */}
@@ -236,9 +260,20 @@ export function RecentlyViewed() {
                     )}
                   </p>
                   <div className="mt-2">
-                    <span className="font-medium text-[#222222] text-sm">
-                      {formatPrice(listing.price, listing.currency)} {listing.currency}
-                    </span>
+                    {activePromotion ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#757575] line-through">
+                          {currencySymbol}{activePromotion.original_price.toLocaleString()}
+                        </span>
+                        <span className="font-bold text-[#F56400] text-sm">
+                          {currencySymbol}{activePromotion.sale_price.toLocaleString()}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-medium text-[#222222] text-sm">
+                        {formatPrice(listing.price, listing.currency)} {listing.currency}
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>

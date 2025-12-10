@@ -22,6 +22,7 @@ export interface FilterState {
   currency: 'AMD' | 'USD';
   conditions: string[];
   country: string;
+  onSale: boolean;
 }
 
 interface Country {
@@ -210,6 +211,7 @@ export function SearchFilters({ onApplyFilters, initialFilters, showCategoryFilt
     currency: initialFilters?.currency || 'AMD',
     conditions: initialFilters?.conditions || [],
     country: initialFilters?.country || '',
+    onSale: initialFilters?.onSale || false,
   });
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -262,6 +264,7 @@ export function SearchFilters({ onApplyFilters, initialFilters, showCategoryFilt
       currency: 'AMD',
       conditions: [],
       country: '',
+      onSale: false,
     };
     setFilters(resetFilters);
     onApplyFilters(resetFilters);
@@ -305,6 +308,23 @@ export function SearchFilters({ onApplyFilters, initialFilters, showCategoryFilt
             </select>
           </div>
         )}
+
+        {/* On Sale Filter */}
+        <div className="p-4 border-b border-[#E5E5E5]">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filters.onSale}
+              onChange={(e) => setFilters(prev => ({ ...prev, onSale: e.target.checked }))}
+              className="w-5 h-5 text-[#F56400] border-[#E5E5E5] rounded focus:ring-[#F56400]"
+            />
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-[#F56400] text-white text-xs font-bold">SALE</span>
+              <span className="text-sm font-medium text-[#222222]">On Sale</span>
+            </div>
+          </label>
+          <p className="text-xs text-[#757575] mt-2 ml-8">Show only items with active discounts</p>
+        </div>
 
         {/* Price Range with Currency Toggle */}
         <div className="p-4 border-b border-[#E5E5E5]">

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { VerifiedCheckmark } from '@/components/stores/StoreBadges';
+import { Promotion, isPromotionActive } from '@/lib/promotions';
 
 interface Listing {
   id: string;
@@ -16,6 +17,7 @@ interface Listing {
   storeRating: number | null;
   storeIsVerified: boolean;
   condition: string;
+  activePromotion: Promotion | null;
 }
 
 function formatPrice(price: number, currency: string): string {
@@ -44,7 +46,7 @@ export function FeaturedListings() {
   useEffect(() => {
     async function fetchListings() {
       try {
-        // Fetch active listings with their primary image and store info
+        // Fetch active listings with their primary image, store info, and promotions
         const { data, error: fetchError } = await supabase
           .from('listings')
           .select(`
@@ -54,7 +56,8 @@ export function FeaturedListings() {
             currency,
             condition,
             store:stores(id, name, slug, is_verified, average_rating),
-            listing_images!inner(url, is_primary, position)
+            listing_images!inner(url, is_primary, position),
+            listing_promotions(*)
           `)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
@@ -77,6 +80,10 @@ export function FeaturedListings() {
           // Store is returned as an object (not array) from Supabase foreign key join
           const store = item.store as unknown as { id: string; name: string; slug: string; is_verified: boolean; average_rating: number | null } | null;
 
+          // Find active promotion
+          const promotions = (item.listing_promotions || []) as Promotion[];
+          const activePromotion = promotions.find(p => isPromotionActive(p)) || null;
+
           return {
             id: item.id,
             title: item.title_en || 'Untitled',
@@ -87,6 +94,7 @@ export function FeaturedListings() {
             storeRating: store?.average_rating || null,
             storeIsVerified: store?.is_verified || false,
             condition: item.condition || '',
+            activePromotion,
           };
         });
 
@@ -207,77 +215,110 @@ export function FeaturedListings() {
 
         {/* Listings grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-          {listings.map((listing) => (
-            <Link
-              key={listing.id}
-              href={`/listing/${listing.id}`}
-              className="group"
-            >
-              {/* Image container */}
-              <div className="aspect-square relative bg-[#F5F5F5] overflow-hidden">
-                {listing.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={listing.image}
-                    alt={listing.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <svg
-                      className="w-12 h-12 text-[#D4D4D4]"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1}
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
-                )}
+          {listings.map((listing) => {
+            const currencySymbol = listing.currency === 'AMD' ? '֏' : '$';
+            
+            return (
+              <Link
+                key={listing.id}
+                href={`/listing/${listing.id}`}
+                className="group"
+              >
+                {/* Image container */}
+                <div className="aspect-square relative bg-[#F5F5F5] overflow-hidden">
+                  {listing.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={listing.image}
+                      alt={listing.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <svg
+                        className="w-12 h-12 text-[#D4D4D4]"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1}
+                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                    </div>
+                  )}
 
-                {/* Condition badge - bottom left */}
-                {getConditionLabel(listing.condition) && (
-                  <span className="absolute bottom-3 left-3 bg-white px-2 py-1 text-[10px] font-semibold tracking-wide text-[#222222] uppercase">
-                    {getConditionLabel(listing.condition)}
-                  </span>
-                )}
+                  {/* Sale Badge */}
+                  {listing.activePromotion && (
+                    <div className="absolute top-2 left-2 z-10">
+                      <span className="px-2 py-0.5 text-xs font-bold bg-[#F56400] text-white">
+                        SALE
+                      </span>
+                    </div>
+                  )}
 
-                {/* Favorite Button */}
-                <div className="absolute top-2 right-2">
-                  <FavoriteButton listingId={listing.id} size="small" />
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="pt-3 pb-2">
-                <h3 className="font-medium text-[#222222] text-sm leading-tight group-hover:underline line-clamp-2">
-                  {listing.title}
-                </h3>
-                <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
-                  <span className="inline-flex items-center gap-0.5">
-                    {listing.storeName}
-                    {listing.storeIsVerified && <VerifiedCheckmark />}
-                  </span>
-                  {listing.storeRating && listing.storeRating > 0 && (
-                    <span className="inline-flex items-center text-[#F56400]">
-                      <span>★</span>
-                      <span className="ml-0.5">{listing.storeRating.toFixed(1)}</span>
+                  {/* Condition badge - adjusted position if sale is active */}
+                  {getConditionLabel(listing.condition) && (
+                    <span className={`absolute left-3 bg-white px-2 py-1 text-[10px] font-semibold tracking-wide text-[#222222] uppercase ${
+                      listing.activePromotion ? 'top-9' : 'bottom-3'
+                    }`}>
+                      {getConditionLabel(listing.condition)}
                     </span>
                   )}
-                </p>
-                <div className="mt-2">
-                  <span className="font-medium text-[#222222] text-sm">
-                    {formatPrice(listing.price, listing.currency)} {listing.currency}
-                  </span>
+
+                  {/* Discount Badge */}
+                  {listing.activePromotion && (
+                    <div className="absolute bottom-3 left-3 bg-[#F56400] text-white text-xs font-bold px-1.5 py-0.5">
+                      -{listing.activePromotion.discount_percent}%
+                    </div>
+                  )}
+
+                  {/* Favorite Button */}
+                  <div className="absolute top-2 right-2">
+                    <FavoriteButton listingId={listing.id} size="small" />
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+
+                {/* Content */}
+                <div className="pt-3 pb-2">
+                  <h3 className="font-medium text-[#222222] text-sm leading-tight group-hover:underline line-clamp-2">
+                    {listing.title}
+                  </h3>
+                  <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
+                    <span className="inline-flex items-center gap-0.5">
+                      {listing.storeName}
+                      {listing.storeIsVerified && <VerifiedCheckmark />}
+                    </span>
+                    {listing.storeRating && listing.storeRating > 0 && (
+                      <span className="inline-flex items-center text-[#F56400]">
+                        <span>★</span>
+                        <span className="ml-0.5">{listing.storeRating.toFixed(1)}</span>
+                      </span>
+                    )}
+                  </p>
+                  <div className="mt-2">
+                    {listing.activePromotion ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#757575] line-through">
+                          {currencySymbol}{listing.activePromotion.original_price.toLocaleString()}
+                        </span>
+                        <span className="font-bold text-[#F56400] text-sm">
+                          {currencySymbol}{listing.activePromotion.sale_price.toLocaleString()}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-medium text-[#222222] text-sm">
+                        {formatPrice(listing.price, listing.currency)} {listing.currency}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </section>

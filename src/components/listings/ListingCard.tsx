@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FavoriteButton } from './FavoriteButton';
 import { VerifiedCheckmark } from '@/components/stores/StoreBadges';
+import { Promotion, isPromotionActive } from '@/lib/promotions';
 
 interface ListingImage {
   id: string;
@@ -26,6 +27,7 @@ interface ListingCardProps {
       total_reviews?: number;
       is_verified?: boolean;
     };
+    listing_promotions?: Promotion[];
   };
   showStore?: boolean;
 }
@@ -40,6 +42,10 @@ const conditionLabels: Record<string, { label: string; color: string }> = {
 export function ListingCard({ listing, showStore = false }: ListingCardProps) {
   const primaryImage = listing.listing_images?.find(img => img.is_primary) || listing.listing_images?.[0];
   const condition = conditionLabels[listing.condition];
+  
+  // Check for active promotion
+  const activePromotion = listing.listing_promotions?.find(p => isPromotionActive(p));
+  const currencySymbol = listing.currency === 'AMD' ? '֏' : '$';
 
   return (
     <Link 
@@ -63,9 +69,18 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
           </div>
         )}
         
-        {/* Condition Badge */}
+        {/* Sale Badge */}
+        {activePromotion && (
+          <div className="absolute top-2 left-2 z-10">
+            <span className="px-2 py-0.5 text-xs font-bold bg-[#F56400] text-white">
+              SALE
+            </span>
+          </div>
+        )}
+        
+        {/* Condition Badge - moved below sale badge if sale is active */}
         {condition && (
-          <div className="absolute top-2 left-2">
+          <div className={`absolute left-2 ${activePromotion ? 'top-9' : 'top-2'}`}>
             <span className={`px-2 py-0.5 text-xs font-medium ${condition.color}`}>
               {condition.label}
             </span>
@@ -76,6 +91,13 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
         <div className="absolute top-2 right-2">
           <FavoriteButton listingId={listing.id} size="small" />
         </div>
+
+        {/* Discount Badge */}
+        {activePromotion && (
+          <div className="absolute bottom-2 left-2 bg-[#F56400] text-white text-xs font-bold px-1.5 py-0.5">
+            -{activePromotion.discount_percent}%
+          </div>
+        )}
 
         {/* Image Count Badge */}
         {listing.listing_images && listing.listing_images.length > 1 && (
@@ -109,9 +131,21 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
           </p>
         )}
         
-        <p className="font-bold text-[#222222] mt-2">
-          ֏{listing.price.toLocaleString()}
-        </p>
+        {/* Price - with sale display */}
+        {activePromotion ? (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-[#757575] line-through">
+              {currencySymbol}{activePromotion.original_price.toLocaleString()}
+            </span>
+            <span className="font-bold text-[#F56400]">
+              {currencySymbol}{activePromotion.sale_price.toLocaleString()}
+            </span>
+          </div>
+        ) : (
+          <p className="font-bold text-[#222222] mt-2">
+            {currencySymbol}{listing.price.toLocaleString()}
+          </p>
+        )}
       </div>
     </Link>
   );

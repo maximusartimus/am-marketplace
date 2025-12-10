@@ -8,6 +8,7 @@ import { Footer } from '@/components/layout/Footer';
 import { SearchFilters, FilterState } from '@/components/search/SearchFilters';
 import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { supabase } from '@/lib/supabase';
+import { Promotion, isPromotionActive } from '@/lib/promotions';
 
 interface ListingImage {
   url: string;
@@ -28,6 +29,7 @@ interface Listing {
     location_country: string | null;
     average_rating: number | null;
   } | null;
+  listing_promotions?: Promotion[];
 }
 
 interface Category {
@@ -64,6 +66,7 @@ export default function CategoryPage({ params }: PageProps) {
     currency: (searchParams.get('currency') as 'AMD' | 'USD') || 'AMD',
     conditions: searchParams.get('conditions')?.split(',').filter(Boolean) || [],
     country: searchParams.get('country') || '',
+    onSale: searchParams.get('onSale') === 'true',
   });
 
   // Fetch category details
@@ -104,7 +107,8 @@ export default function CategoryPage({ params }: PageProps) {
           condition,
           location_region,
           listing_images(url, is_primary, position),
-          store:stores!inner(name, slug, location_country, average_rating)
+          store:stores!inner(name, slug, location_country, average_rating),
+          listing_promotions(*)
         `, { count: 'exact' })
         .eq('status', 'active')
         .eq('category_id', category.id);
@@ -145,13 +149,22 @@ export default function CategoryPage({ params }: PageProps) {
       }
 
       // Transform data to include store as object instead of array
-      const transformedData = (data || []).map(item => ({
+      let transformedData = (data || []).map(item => ({
         ...item,
         store: Array.isArray(item.store) ? item.store[0] || null : item.store,
+        listing_promotions: item.listing_promotions || [],
       })) as Listing[];
 
+      // Filter by active promotions if onSale is true
+      if (filters.onSale) {
+        transformedData = transformedData.filter(listing => {
+          const activePromotion = listing.listing_promotions?.find(p => isPromotionActive(p));
+          return !!activePromotion;
+        });
+      }
+
       setListings(transformedData);
-      setTotalCount(count || 0);
+      setTotalCount(filters.onSale ? transformedData.length : (count || 0));
     } catch (err) {
       console.error('Error:', err);
       setListings([]);
@@ -179,6 +192,7 @@ export default function CategoryPage({ params }: PageProps) {
     if (filters.currency !== 'AMD') params.set('currency', filters.currency);
     if (filters.conditions.length > 0) params.set('conditions', filters.conditions.join(','));
     if (filters.country) params.set('country', filters.country);
+    if (filters.onSale) params.set('onSale', 'true');
     
     const queryString = params.toString();
     router.push(`/category/${slug}${queryString ? `?${queryString}` : ''}`, { scroll: false });
@@ -309,6 +323,8 @@ export default function CategoryPage({ params }: PageProps) {
                   {listings.map((listing) => {
                     const condition = conditionLabels[listing.condition];
                     const primaryImage = getPrimaryImage(listing.listing_images);
+                    const activePromotion = listing.listing_promotions?.find(p => isPromotionActive(p));
+                    const currencySymbol = listing.currency === 'AMD' ? '֏' : '$';
 
                     return (
                       <Link
@@ -333,9 +349,18 @@ export default function CategoryPage({ params }: PageProps) {
                             </div>
                           )}
 
+                          {/* Sale Badge */}
+                          {activePromotion && (
+                            <div className="absolute top-2 left-2 z-10">
+                              <span className="px-2 py-0.5 text-xs font-bold bg-[#F56400] text-white">
+                                SALE
+                              </span>
+                            </div>
+                          )}
+
                           {/* Condition Badge */}
                           {condition && (
-                            <div className="absolute top-2 left-2">
+                            <div className={`absolute left-2 ${activePromotion ? 'top-9' : 'top-2'}`}>
                               <span className={`px-2 py-0.5 text-xs font-medium ${condition.color}`}>
                                 {condition.label}
                               </span>
@@ -346,6 +371,13 @@ export default function CategoryPage({ params }: PageProps) {
                           <div className="absolute top-2 right-2">
                             <FavoriteButton listingId={listing.id} size="small" />
                           </div>
+
+                          {/* Discount Badge */}
+                          {activePromotion && (
+                            <div className="absolute bottom-2 left-2 bg-[#F56400] text-white text-xs font-bold px-1.5 py-0.5">
+                              -{activePromotion.discount_percent}%
+                            </div>
+                          )}
 
                           {/* Image Count Badge */}
                           {listing.listing_images && listing.listing_images.length > 1 && (
@@ -376,9 +408,21 @@ export default function CategoryPage({ params }: PageProps) {
                             </p>
                           )}
                           
-                          <p className="font-bold text-[#222222] mt-2">
-                            {formatPrice(listing.price, listing.currency)}
-                          </p>
+                          {/* Price - with sale display */}
+                          {activePromotion ? (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-xs text-[#757575] line-through">
+                                {currencySymbol}{activePromotion.original_price.toLocaleString()}
+                              </span>
+                              <span className="font-bold text-[#F56400]">
+                                {currencySymbol}{activePromotion.sale_price.toLocaleString()}
+                              </span>
+                            </div>
+                          ) : (
+                            <p className="font-bold text-[#222222] mt-2">
+                              {formatPrice(listing.price, listing.currency)}
+                            </p>
+                          )}
                         </div>
                       </Link>
                     );

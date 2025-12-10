@@ -44,6 +44,18 @@ interface ListingImage {
   is_primary: boolean;
 }
 
+interface Promotion {
+  id: string;
+  listing_id: string;
+  original_price: number;
+  sale_price: number;
+  discount_percent: number;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 interface Listing {
   id: string;
   title_en: string;
@@ -53,6 +65,7 @@ interface Listing {
   status: string;
   created_at: string;
   listing_images: ListingImage[];
+  listing_promotions?: Promotion[];
 }
 
 interface ReviewerInfo {
@@ -470,12 +483,13 @@ export default function StorePage() {
 
         setStore(storeData);
 
-        // Fetch listings for this store
+        // Fetch listings for this store with promotions
         const { data: listingsData, error: listingsError } = await supabase
           .from('listings')
           .select(`
             *,
-            listing_images(*)
+            listing_images(*),
+            listing_promotions(*)
           `)
           .eq('store_id', storeData.id)
           .eq('status', 'active')
@@ -484,12 +498,13 @@ export default function StorePage() {
         if (listingsError) {
           console.error('Error fetching listings:', listingsError);
         } else {
-          // Sort images by position for each listing
+          // Sort images by position for each listing and include promotions
           const sortedListings = (listingsData || []).map(listing => ({
             ...listing,
             listing_images: (listing.listing_images || []).sort(
               (a: ListingImage, b: ListingImage) => a.position - b.position
             ),
+            listing_promotions: listing.listing_promotions || [],
           }));
           setListings(sortedListings);
         }

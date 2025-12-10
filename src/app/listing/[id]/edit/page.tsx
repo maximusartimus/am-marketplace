@@ -8,6 +8,8 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { supabase } from '@/lib/supabase';
 import { MultiImageUpload } from '@/components/ui/MultiImageUpload';
 import { Header } from '@/components/layout/Header';
+import { SaleModal } from '@/components/listings/SaleModal';
+import { Promotion, isPromotionActive, formatSaleTimeRemaining, formatSaleEndDate } from '@/lib/promotions';
 
 interface Category {
   id: string;
@@ -91,8 +93,14 @@ function EditListingForm() {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [unauthorized, setUnauthorized] = useState(false);
+  const [promotion, setPromotion] = useState<Promotion | null>(null);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [listingCurrency, setListingCurrency] = useState<string>('AMD');
   const router = useRouter();
   const { user } = useAuth();
+  
+  const activePromotion = promotion && isPromotionActive(promotion) ? promotion : null;
+  const currencySymbol = listingCurrency === 'AMD' ? '֏' : '$';
 
   // Fetch listing, store and categories
   useEffect(() => {
@@ -139,6 +147,24 @@ function EditListingForm() {
         }
 
         setStore(listingData.store);
+        setListingCurrency(listingData.currency || 'AMD');
+
+        // Fetch active promotion for this listing
+        const now = new Date().toISOString();
+        const { data: promotionData } = await supabase
+          .from('listing_promotions')
+          .select('*')
+          .eq('listing_id', listingId)
+          .eq('is_active', true)
+          .lte('start_date', now)
+          .gte('end_date', now)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (promotionData) {
+          setPromotion(promotionData);
+        }
 
         // Populate form data
         setFormData({
@@ -213,6 +239,25 @@ function EditListingForm() {
 
     fetchData();
   }, [user, listingId]);
+
+  // Function to refetch promotion data
+  const refetchPromotion = async () => {
+    if (!listingId) return;
+    
+    const now = new Date().toISOString();
+    const { data: promotionData } = await supabase
+      .from('listing_promotions')
+      .select('*')
+      .eq('listing_id', listingId)
+      .eq('is_active', true)
+      .lte('start_date', now)
+      .gte('end_date', now)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    setPromotion(promotionData || null);
+  };
 
   const updateField = <K extends keyof ListingFormData>(
     field: K,
@@ -800,6 +845,57 @@ function EditListingForm() {
               </div>
             </div>
 
+            {/* Sale Management Section */}
+            <div className="bg-white border border-[#E5E5E5] p-6 mb-6">
+              <h2 className="text-lg font-semibold text-[#222222] mb-4">Sale / Promotion</h2>
+              
+              {activePromotion ? (
+                <div className="p-4 bg-[#FFF3E0] border border-[#F56400] mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#F56400]">Active Sale</span>
+                      <span className="px-2 py-0.5 bg-[#F56400] text-white text-xs font-bold">
+                        -{activePromotion.discount_percent}%
+                      </span>
+                    </div>
+                    <span className="text-sm text-[#757575]">
+                      {formatSaleTimeRemaining(activePromotion.end_date)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-[#757575] line-through">
+                      {currencySymbol}{activePromotion.original_price.toLocaleString()}
+                    </span>
+                    <span className="text-xl font-bold text-[#F56400]">
+                      {currencySymbol}{activePromotion.sale_price.toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[#595959]">
+                    Ends {formatSaleEndDate(activePromotion.end_date)}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[#757575] text-sm mb-4">
+                  No active sale on this listing.
+                </p>
+              )}
+              
+              <button
+                type="button"
+                onClick={() => setShowSaleModal(true)}
+                className={`w-full py-3 font-medium transition-colors flex items-center justify-center gap-2 ${
+                  activePromotion
+                    ? 'border border-[#F56400] text-[#F56400] hover:bg-[#FFF3E0]'
+                    : 'bg-[#F56400] text-white hover:bg-[#D95700]'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                {activePromotion ? 'Manage Sale' : 'Add Sale'}
+              </button>
+            </div>
+
             {/* Condition Section */}
             <div className="bg-white border border-[#E5E5E5] p-6 mb-6">
               <h2 className="text-lg font-semibold text-[#222222] mb-4">Condition</h2>
@@ -896,6 +992,17 @@ function EditListingForm() {
               </button>
             </div>
           </form>
+
+          {/* Sale Modal */}
+          <SaleModal
+            isOpen={showSaleModal}
+            onClose={() => setShowSaleModal(false)}
+            listingId={listingId}
+            currentPrice={parseFloat(formData.price) || 0}
+            currency={formData.currency}
+            existingPromotion={promotion}
+            onSaleUpdated={refetchPromotion}
+          />
         </div>
       </div>
     </>

@@ -10,6 +10,8 @@ import { FavoriteButton } from '@/components/listings/FavoriteButton';
 import { FollowButton } from '@/components/stores/FollowButton';
 import { StoreBadges } from '@/components/stores/StoreBadges';
 import { ReportModal } from '@/components/ui/ReportModal';
+import { SaleModal } from '@/components/listings/SaleModal';
+import { Promotion, isPromotionActive, formatSaleTimeRemaining, formatSaleEndDate } from '@/lib/promotions';
 
 interface ListingImage {
   id: string;
@@ -166,8 +168,12 @@ export default function ListingPage() {
   const [storeReviews, setStoreReviews] = useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [promotion, setPromotion] = useState<Promotion | null>(null);
+  const [showSaleModal, setShowSaleModal] = useState(false);
 
   const isOwner = user && listing && user.id === listing.store.user_id;
+  const activePromotion = promotion && isPromotionActive(promotion) ? promotion : null;
+  const currencySymbol = listing?.currency === 'AMD' ? '֏' : '$';
 
   useEffect(() => {
     async function fetchListing() {
@@ -198,6 +204,23 @@ export default function ListingPage() {
         }
 
         setListing(data);
+
+        // Fetch active promotion for this listing
+        const now = new Date().toISOString();
+        const { data: promotionData } = await supabase
+          .from('listing_promotions')
+          .select('*')
+          .eq('listing_id', listingId)
+          .eq('is_active', true)
+          .lte('start_date', now)
+          .gte('end_date', now)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (promotionData) {
+          setPromotion(promotionData);
+        }
 
         // Fetch store reviews with reviewer info
         if (data.store?.id) {
@@ -242,6 +265,25 @@ export default function ListingPage() {
       fetchListing();
     }
   }, [listingId]);
+
+  // Function to refetch promotion data
+  const refetchPromotion = async () => {
+    if (!listingId) return;
+    
+    const now = new Date().toISOString();
+    const { data: promotionData } = await supabase
+      .from('listing_promotions')
+      .select('*')
+      .eq('listing_id', listingId)
+      .eq('is_active', true)
+      .lte('start_date', now)
+      .gte('end_date', now)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    setPromotion(promotionData || null);
+  };
 
   // Track recently viewed for logged-in users
   useEffect(() => {
@@ -521,6 +563,20 @@ export default function ListingPage() {
                     )}
                     {isOwner && (
                       <>
+                        {/* Add/Manage Sale Button */}
+                        <button
+                          onClick={() => setShowSaleModal(true)}
+                          className={`p-2 border transition-colors ${
+                            activePromotion 
+                              ? 'border-[#F56400] bg-[#FFF3E0] hover:bg-[#FFE0B2]' 
+                              : 'border-[#E5E5E5] hover:border-[#F56400] hover:bg-[#FFF3E0]'
+                          }`}
+                          title={activePromotion ? 'Manage sale' : 'Add sale'}
+                        >
+                          <svg className={`w-5 h-5 ${activePromotion ? 'text-[#F56400]' : 'text-[#222222]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                          </svg>
+                        </button>
                         <Link
                           href={`/listing/${listing.id}/edit`}
                           className="p-2 border border-[#E5E5E5] hover:border-[#222222] transition-colors"
@@ -543,9 +599,39 @@ export default function ListingPage() {
                     )}
                   </div>
                 </div>
-                <p className="text-3xl md:text-4xl font-bold text-[#222222] mt-2">
-                  ֏{listing.price.toLocaleString()}
-                </p>
+                
+                {/* Price Display - with sale info */}
+                {activePromotion ? (
+                  <div className="mt-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#F56400] text-white text-sm font-bold mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      SALE -{activePromotion.discount_percent}%
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-lg text-[#757575] line-through">
+                        {currencySymbol}{activePromotion.original_price.toLocaleString()}
+                      </span>
+                      <span className="text-3xl md:text-4xl font-bold text-[#F56400]">
+                        {currencySymbol}{activePromotion.sale_price.toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-sm text-[#595959] mt-2 flex items-center gap-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {formatSaleTimeRemaining(activePromotion.end_date)} • Ends {formatSaleEndDate(activePromotion.end_date)}
+                    </p>
+                    <p className="text-sm text-[#2E7D32] font-medium mt-1">
+                      You save {currencySymbol}{(activePromotion.original_price - activePromotion.sale_price).toLocaleString()}!
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-3xl md:text-4xl font-bold text-[#222222] mt-2">
+                    {currencySymbol}{listing.price.toLocaleString()}
+                  </p>
+                )}
               </div>
 
               {/* Badges */}
@@ -964,6 +1050,19 @@ export default function ListingPage() {
             reporterId={user.id}
             listingId={listing.id}
             targetName={listing.title_en}
+          />
+        )}
+
+        {/* Sale Modal - Only for owners */}
+        {isOwner && (
+          <SaleModal
+            isOpen={showSaleModal}
+            onClose={() => setShowSaleModal(false)}
+            listingId={listing.id}
+            currentPrice={listing.price}
+            currency={listing.currency}
+            existingPromotion={promotion}
+            onSaleUpdated={refetchPromotion}
           />
         )}
       </div>
