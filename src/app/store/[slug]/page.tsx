@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +50,77 @@ interface Listing {
   listing_images: ListingImage[];
 }
 
+interface ReviewerInfo {
+  id: string;
+  name: string | null;
+  profile_photo: string | null;
+}
+
+interface Review {
+  id: string;
+  store_id: string;
+  listing_id: string | null;
+  reviewer_id: string;
+  rating: number;
+  comment: string | null;
+  seller_response: string | null;
+  seller_response_at: string | null;
+  created_at: string;
+  reviewer: ReviewerInfo | null;
+}
+
+// Star Rating Display Component
+function StarRating({ rating, size = 'md' }: { rating: number; size?: 'sm' | 'md' | 'lg' }) {
+  const sizeClasses = {
+    sm: 'text-sm',
+    md: 'text-lg',
+    lg: 'text-2xl',
+  };
+  
+  return (
+    <span className={`${sizeClasses[size]} tracking-tight`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          className={star <= Math.round(rating) ? 'text-[#F56400]' : 'text-[#D4D4D4]'}
+        >
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+// Interactive Star Rating Selector
+function StarRatingSelector({ 
+  rating, 
+  onRatingChange 
+}: { 
+  rating: number; 
+  onRatingChange: (rating: number) => void;
+}) {
+  const [hoverRating, setHoverRating] = useState(0);
+  
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          className={`text-3xl transition-colors ${
+            star <= (hoverRating || rating) ? 'text-[#F56400]' : 'text-[#D4D4D4]'
+          } hover:scale-110 transition-transform`}
+          onMouseEnter={() => setHoverRating(star)}
+          onMouseLeave={() => setHoverRating(0)}
+          onClick={() => onRatingChange(star)}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function StorePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -61,8 +132,314 @@ export default function StorePage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Reviews state
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [averageRating, setAverageRating] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
+  const [hasUserReviewed, setHasUserReviewed] = useState(false);
+  
+  // Review form state
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  
+  // Edit review state
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editRating, setEditRating] = useState(0);
+  const [editComment, setEditComment] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  
+  // Delete review state
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  
+  // Seller response state
+  const [replyingToReviewId, setReplyingToReviewId] = useState<string | null>(null);
+  const [sellerResponse, setSellerResponse] = useState('');
+  const [responseLoading, setResponseLoading] = useState(false);
+  
+  // Edit/Delete seller response state
+  const [editingResponseId, setEditingResponseId] = useState<string | null>(null);
+  const [editResponseText, setEditResponseText] = useState('');
+  const [editResponseLoading, setEditResponseLoading] = useState(false);
+  const [deletingResponseId, setDeletingResponseId] = useState<string | null>(null);
+  const [deleteResponseLoading, setDeleteResponseLoading] = useState(false);
 
   const isOwner = user && store && user.id === store.user_id;
+
+  // Fetch reviews for the store
+  const fetchReviews = useCallback(async (storeId: string) => {
+    setReviewsLoading(true);
+    try {
+      // Fetch reviews with reviewer info
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('reviews')
+        .select('*, reviewer:users(id, name, profile_photo)')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false });
+
+      if (reviewsError) {
+        console.error('Error fetching reviews:', reviewsError);
+        return;
+      }
+
+      setReviews(reviewsData || []);
+
+      // Calculate average rating
+      if (reviewsData && reviewsData.length > 0) {
+        const totalRating = reviewsData.reduce((sum, review) => sum + review.rating, 0);
+        setAverageRating(totalRating / reviewsData.length);
+        setTotalReviews(reviewsData.length);
+      } else {
+        setAverageRating(0);
+        setTotalReviews(0);
+      }
+
+      // Check if current user has already reviewed
+      if (user) {
+        const userReview = reviewsData?.find(review => review.reviewer_id === user.id);
+        setHasUserReviewed(!!userReview);
+      }
+    } catch (err) {
+      console.error('Error fetching reviews:', err);
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [user]);
+
+  // Submit a new review
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !store || reviewRating === 0) return;
+
+    setSubmitLoading(true);
+    setReviewError(null);
+
+    try {
+      const { error } = await supabase.from('reviews').insert({
+        store_id: store.id,
+        reviewer_id: user.id,
+        rating: reviewRating,
+        comment: reviewComment.trim() || null,
+      });
+
+      if (error) {
+        if (error.code === '23505') {
+          setReviewError('You have already reviewed this store.');
+        } else {
+          setReviewError('Failed to submit review. Please try again.');
+        }
+        console.error('Error submitting review:', error);
+        return;
+      }
+
+      // Reset form and refresh reviews
+      setReviewRating(0);
+      setReviewComment('');
+      setShowReviewForm(false);
+      await fetchReviews(store.id);
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      setReviewError('An unexpected error occurred. Please try again.');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  // Submit seller response
+  const handleSubmitResponse = async (reviewId: string) => {
+    if (!sellerResponse.trim()) return;
+
+    setResponseLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          seller_response: sellerResponse.trim(),
+          seller_response_at: new Date().toISOString(),
+        })
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('Error submitting response:', error);
+        return;
+      }
+
+      // Reset and refresh
+      setSellerResponse('');
+      setReplyingToReviewId(null);
+      if (store) {
+        await fetchReviews(store.id);
+      }
+    } catch (err) {
+      console.error('Error submitting response:', err);
+    } finally {
+      setResponseLoading(false);
+    }
+  };
+
+  // Edit review
+  const handleEditReview = async (reviewId: string) => {
+    if (editRating === 0) return;
+
+    setEditLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({ 
+          rating: editRating, 
+          comment: editComment.trim() || null 
+        })
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('Error updating review:', error);
+        return;
+      }
+
+      // Reset and refresh
+      setEditingReviewId(null);
+      setEditRating(0);
+      setEditComment('');
+      if (store) {
+        await fetchReviews(store.id);
+      }
+    } catch (err) {
+      console.error('Error updating review:', err);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Delete review
+  const handleDeleteReview = async (reviewId: string) => {
+    setDeleteLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .delete()
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('Error deleting review:', error);
+        return;
+      }
+
+      // Reset and refresh
+      setDeletingReviewId(null);
+      if (store) {
+        await fetchReviews(store.id);
+      }
+    } catch (err) {
+      console.error('Error deleting review:', err);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Start editing a review
+  const startEditingReview = (review: Review) => {
+    setEditingReviewId(review.id);
+    setEditRating(review.rating);
+    setEditComment(review.comment || '');
+  };
+
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingReviewId(null);
+    setEditRating(0);
+    setEditComment('');
+  };
+
+  // Scroll to reviews section
+  const scrollToReviews = () => {
+    const reviewsSection = document.getElementById('reviews');
+    if (reviewsSection) {
+      reviewsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Start editing seller response
+  const startEditingResponse = (review: Review) => {
+    setEditingResponseId(review.id);
+    setEditResponseText(review.seller_response || '');
+  };
+
+  // Cancel editing response
+  const cancelEditingResponse = () => {
+    setEditingResponseId(null);
+    setEditResponseText('');
+  };
+
+  // Edit seller response
+  const handleEditResponse = async (reviewId: string) => {
+    if (!editResponseText.trim()) return;
+
+    setEditResponseLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          seller_response: editResponseText.trim(),
+          seller_response_at: new Date().toISOString(),
+        })
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('Error updating response:', error);
+        return;
+      }
+
+      // Reset and refresh
+      setEditingResponseId(null);
+      setEditResponseText('');
+      if (store) {
+        await fetchReviews(store.id);
+      }
+    } catch (err) {
+      console.error('Error updating response:', err);
+    } finally {
+      setEditResponseLoading(false);
+    }
+  };
+
+  // Delete seller response
+  const handleDeleteResponse = async (reviewId: string) => {
+    setDeleteResponseLoading(true);
+
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          seller_response: null,
+          seller_response_at: null,
+        })
+        .eq('id', reviewId);
+
+      if (error) {
+        console.error('Error deleting response:', error);
+        return;
+      }
+
+      // Reset and refresh
+      setDeletingResponseId(null);
+      if (store) {
+        await fetchReviews(store.id);
+      }
+    } catch (err) {
+      console.error('Error deleting response:', err);
+    } finally {
+      setDeleteResponseLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchStoreAndListings() {
@@ -120,6 +497,26 @@ export default function StorePage() {
       fetchStoreAndListings();
     }
   }, [slug]);
+
+  // Fetch reviews when store is loaded
+  useEffect(() => {
+    if (store?.id) {
+      fetchReviews(store.id);
+    }
+  }, [store?.id, fetchReviews]);
+
+  // Smooth scroll to reviews section if hash is #reviews
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash === '#reviews') {
+      // Small delay to ensure the page is fully rendered
+      setTimeout(() => {
+        const reviewsSection = document.getElementById('reviews');
+        if (reviewsSection) {
+          reviewsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    }
+  }, [loading]);
 
   if (loading || authLoading) {
     return (
@@ -311,6 +708,17 @@ export default function StorePage() {
                       </span>
                     )}
                   </div>
+                  {/* Clickable Rating at top */}
+                  {totalReviews > 0 && (
+                    <button
+                      onClick={scrollToReviews}
+                      className="flex items-center gap-2 mt-1 hover:opacity-80 transition-opacity"
+                    >
+                      <StarRating rating={averageRating} size="sm" />
+                      <span className="text-sm text-[#222222] font-medium">{averageRating.toFixed(1)}</span>
+                      <span className="text-sm text-[#757575]">({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})</span>
+                    </button>
+                  )}
                   <div className="flex items-center gap-4 mt-2 text-sm text-[#757575]">
                     {(store.location_country || store.location_region) && (
                       <span className="flex items-center gap-1">
@@ -476,6 +884,397 @@ export default function StorePage() {
                   </svg>
                   Create Your First Listing
                 </Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Reviews Section */}
+        <div id="reviews" className="pb-12 scroll-mt-24">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-[#222222]">Reviews</h2>
+              {totalReviews > 0 && (
+                <div className="flex items-center gap-2 mt-1">
+                  <StarRating rating={averageRating} size="md" />
+                  <span className="text-[#222222] font-medium">{averageRating.toFixed(1)}</span>
+                  <span className="text-[#757575]">({totalReviews} {totalReviews === 1 ? 'review' : 'reviews'})</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Write Review Button - only for logged-in users who are NOT the store owner */}
+            {user && !isOwner && !hasUserReviewed && !showReviewForm && (
+              <button
+                onClick={() => setShowReviewForm(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-[#F56400] hover:bg-[#D95700] transition-colors text-sm font-medium text-white"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Write a Review
+              </button>
+            )}
+          </div>
+
+          {/* Review Form */}
+          {showReviewForm && (
+            <div className="bg-white border border-[#E5E5E5] p-6 mb-6">
+              <h3 className="text-lg font-semibold text-[#222222] mb-4">Write a Review</h3>
+              <form onSubmit={handleSubmitReview}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-[#222222] mb-2">
+                    Your Rating <span className="text-red-500">*</span>
+                  </label>
+                  <StarRatingSelector rating={reviewRating} onRatingChange={setReviewRating} />
+                  {reviewRating === 0 && submitLoading && (
+                    <p className="text-sm text-red-500 mt-1">Please select a rating</p>
+                  )}
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-[#222222] mb-2">
+                    Your Review (optional)
+                  </label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Share your experience with this store..."
+                    rows={4}
+                    className="w-full px-4 py-3 border border-[#E5E5E5] focus:border-[#222222] focus:outline-none text-[#222222] placeholder-[#9E9E9E] resize-none"
+                  />
+                </div>
+
+                {reviewError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm">
+                    {reviewError}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={submitLoading || reviewRating === 0}
+                    className="px-6 py-2 bg-[#222222] text-white font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitLoading ? 'Submitting...' : 'Submit Review'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowReviewForm(false);
+                      setReviewRating(0);
+                      setReviewComment('');
+                      setReviewError(null);
+                    }}
+                    className="px-6 py-2 border border-[#E5E5E5] text-[#222222] font-medium hover:border-[#222222] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Reviews List */}
+          {reviewsLoading ? (
+            <div className="bg-white border border-[#E5E5E5] p-8 text-center">
+              <div className="animate-spin w-6 h-6 border-2 border-[#222222] border-t-transparent rounded-full mx-auto mb-2" />
+              <p className="text-sm text-[#757575]">Loading reviews...</p>
+            </div>
+          ) : reviews.length > 0 ? (
+            <div className="space-y-4">
+              {reviews.map((review) => {
+                const isReviewer = user && review.reviewer_id === user.id;
+                const isEditing = editingReviewId === review.id;
+                const isDeleting = deletingReviewId === review.id;
+                
+                return (
+                <div key={review.id} className="bg-white border border-[#E5E5E5] p-6">
+                  {/* Delete Confirmation */}
+                  {isDeleting && (
+                    <div className="mb-4 p-4 bg-[#FFEBEE] border border-[#D32F2F]">
+                      <p className="text-sm text-[#D32F2F] mb-3">Are you sure you want to delete your review?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDeleteReview(review.id)}
+                          disabled={deleteLoading}
+                          className="px-4 py-2 bg-[#D32F2F] text-white text-sm font-medium hover:bg-[#B71C1C] transition-colors disabled:opacity-50"
+                        >
+                          {deleteLoading ? 'Deleting...' : 'Yes, Delete'}
+                        </button>
+                        <button
+                          onClick={() => setDeletingReviewId(null)}
+                          disabled={deleteLoading}
+                          className="px-4 py-2 border border-[#E5E5E5] text-[#222222] text-sm font-medium hover:border-[#222222] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Edit Form */}
+                  {isEditing ? (
+                    <div>
+                      <h4 className="text-sm font-medium text-[#222222] mb-3">Edit Your Review</h4>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-[#222222] mb-2">
+                          Rating <span className="text-red-500">*</span>
+                        </label>
+                        <StarRatingSelector rating={editRating} onRatingChange={setEditRating} />
+                      </div>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-[#222222] mb-2">
+                          Comment (optional)
+                        </label>
+                        <textarea
+                          value={editComment}
+                          onChange={(e) => setEditComment(e.target.value)}
+                          placeholder="Share your experience..."
+                          rows={3}
+                          className="w-full px-4 py-3 border border-[#E5E5E5] focus:border-[#222222] focus:outline-none text-[#222222] placeholder-[#9E9E9E] resize-none text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditReview(review.id)}
+                          disabled={editLoading || editRating === 0}
+                          className="px-4 py-2 bg-[#222222] text-white text-sm font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {editLoading ? 'Saving...' : 'Save Changes'}
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          disabled={editLoading}
+                          className="px-4 py-2 border border-[#E5E5E5] text-[#222222] text-sm font-medium hover:border-[#222222] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
+                  {/* Review Header */}
+                  <div className="flex items-start gap-4">
+                    {/* Reviewer Avatar */}
+                    <div className="w-10 h-10 bg-[#E5E5E5] rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center">
+                      {review.reviewer?.profile_photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={review.reviewer.profile_photo}
+                          alt={review.reviewer.name || 'Reviewer'}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium text-[#757575]">
+                          {(review.reviewer?.name || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Review Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-medium text-[#222222]">
+                          {review.reviewer?.name || 'Anonymous'}
+                          {isReviewer && <span className="ml-2 text-xs text-[#757575] font-normal">(You)</span>}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {/* Edit/Delete buttons for reviewer */}
+                          {isReviewer && !isDeleting && (
+                            <>
+                              <button
+                                onClick={() => startEditingReview(review)}
+                                className="text-sm text-[#1976D2] hover:text-[#1565C0] font-medium"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeletingReviewId(review.id)}
+                                className="text-sm text-[#D32F2F] hover:text-[#B71C1C] font-medium"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                          <span className="text-sm text-[#757575]">
+                            {new Date(review.created_at).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <StarRating rating={review.rating} size="sm" />
+                      
+                      {review.comment && (
+                        <p className="mt-2 text-[#595959] leading-relaxed">{review.comment}</p>
+                      )}
+
+                      {/* Seller Response */}
+                      {review.seller_response && (
+                        <div className="mt-4 ml-4 pl-4 border-l-2 border-[#F56400] bg-[#FFF9F5] p-4">
+                          {/* Delete Response Confirmation */}
+                          {deletingResponseId === review.id && (
+                            <div className="mb-3 p-3 bg-[#FFEBEE] border border-[#D32F2F]">
+                              <p className="text-sm text-[#D32F2F] mb-2">Delete your response?</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleDeleteResponse(review.id)}
+                                  disabled={deleteResponseLoading}
+                                  className="px-3 py-1.5 bg-[#D32F2F] text-white text-xs font-medium hover:bg-[#B71C1C] transition-colors disabled:opacity-50"
+                                >
+                                  {deleteResponseLoading ? 'Deleting...' : 'Yes, Delete'}
+                                </button>
+                                <button
+                                  onClick={() => setDeletingResponseId(null)}
+                                  disabled={deleteResponseLoading}
+                                  className="px-3 py-1.5 border border-[#E5E5E5] text-[#222222] text-xs font-medium hover:border-[#222222] transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Edit Response Form */}
+                          {editingResponseId === review.id ? (
+                            <div>
+                              <textarea
+                                value={editResponseText}
+                                onChange={(e) => setEditResponseText(e.target.value)}
+                                placeholder="Edit your response..."
+                                rows={3}
+                                className="w-full px-3 py-2 border border-[#E5E5E5] focus:border-[#F56400] focus:outline-none text-[#222222] placeholder-[#9E9E9E] resize-none text-sm bg-white"
+                              />
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => handleEditResponse(review.id)}
+                                  disabled={editResponseLoading || !editResponseText.trim()}
+                                  className="px-3 py-1.5 bg-[#F56400] text-white text-xs font-medium hover:bg-[#D95700] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {editResponseLoading ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={cancelEditingResponse}
+                                  disabled={editResponseLoading}
+                                  className="px-3 py-1.5 border border-[#E5E5E5] text-[#222222] text-xs font-medium hover:border-[#222222] transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-[#F56400]">Seller Response</span>
+                                  {review.seller_response_at && (
+                                    <span className="text-xs text-[#757575]">
+                                      {new Date(review.seller_response_at).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Edit/Delete buttons for store owner */}
+                                {isOwner && deletingResponseId !== review.id && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => startEditingResponse(review)}
+                                      className="text-xs text-[#1976D2] hover:text-[#1565C0] font-medium"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => setDeletingResponseId(review.id)}
+                                      className="text-xs text-[#D32F2F] hover:text-[#B71C1C] font-medium"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              <p className="text-sm text-[#595959]">{review.seller_response}</p>
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Reply Button for Store Owner */}
+                      {isOwner && !review.seller_response && (
+                        <>
+                          {replyingToReviewId === review.id ? (
+                            <div className="mt-4">
+                              <textarea
+                                value={sellerResponse}
+                                onChange={(e) => setSellerResponse(e.target.value)}
+                                placeholder="Write your response..."
+                                rows={3}
+                                className="w-full px-4 py-3 border border-[#E5E5E5] focus:border-[#222222] focus:outline-none text-[#222222] placeholder-[#9E9E9E] resize-none text-sm"
+                              />
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => handleSubmitResponse(review.id)}
+                                  disabled={responseLoading || !sellerResponse.trim()}
+                                  className="px-4 py-2 bg-[#222222] text-white text-sm font-medium hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {responseLoading ? 'Sending...' : 'Send Response'}
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setReplyingToReviewId(null);
+                                    setSellerResponse('');
+                                  }}
+                                  className="px-4 py-2 border border-[#E5E5E5] text-[#222222] text-sm font-medium hover:border-[#222222] transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setReplyingToReviewId(review.id)}
+                              className="mt-3 text-sm text-[#F56400] hover:text-[#D95700] font-medium"
+                            >
+                              Reply to this review
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  </>
+                  )}
+                </div>
+              )})}
+            </div>
+          ) : (
+            /* No Reviews Empty State */
+            <div className="bg-white border border-[#E5E5E5] p-8 text-center">
+              <div className="w-12 h-12 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-6 h-6 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-[#222222] mb-1">No reviews yet</h3>
+              <p className="text-[#757575] text-sm">
+                {isOwner 
+                  ? "Your store doesn't have any reviews yet."
+                  : "Be the first to review this store!"}
+              </p>
+              {user && !isOwner && !hasUserReviewed && !showReviewForm && (
+                <button
+                  onClick={() => setShowReviewForm(true)}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#F56400] hover:bg-[#D95700] transition-colors text-sm font-medium text-white"
+                >
+                  Write a Review
+                </button>
               )}
             </div>
           )}

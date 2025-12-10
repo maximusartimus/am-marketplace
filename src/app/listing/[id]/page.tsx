@@ -28,12 +28,32 @@ interface Store {
   is_verified: boolean;
   average_rating: number;
   total_sales: number;
+  total_reviews: number;
 }
 
 interface Category {
   id: string;
   name_en: string;
   slug: string;
+}
+
+interface ReviewerInfo {
+  id: string;
+  name: string | null;
+  profile_photo: string | null;
+}
+
+interface Review {
+  id: string;
+  store_id: string;
+  listing_id: string | null;
+  reviewer_id: string;
+  rating: number;
+  comment: string | null;
+  seller_response: string | null;
+  seller_response_at: string | null;
+  created_at: string;
+  reviewer: ReviewerInfo | null;
 }
 
 interface Listing {
@@ -67,6 +87,58 @@ const deliveryLabels: Record<string, { label: string; icon: string }> = {
   nationwide: { label: 'Nationwide shipping', icon: '📦' },
 };
 
+// Star Rating Display Component for listing page
+function StarRating({ rating, size = 'sm' }: { rating: number; size?: 'sm' | 'md' | 'lg' }) {
+  const sizeClasses = {
+    sm: 'text-sm',
+    md: 'text-lg',
+    lg: 'text-2xl',
+  };
+  
+  return (
+    <span className={`${sizeClasses[size]} tracking-tight`}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          className={star <= Math.round(rating) ? 'text-[#F56400]' : 'text-[#D4D4D4]'}
+        >
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function StarRatingDisplay({ rating, count, storeSlug }: { rating: number; count: number; storeSlug?: string }) {
+  const content = (
+    <span className="inline-flex items-center gap-1 text-sm">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          className={star <= Math.round(rating) ? 'text-[#F56400]' : 'text-[#D4D4D4]'}
+        >
+          ★
+        </span>
+      ))}
+      <span className="text-[#222222] font-medium ml-0.5">{rating.toFixed(1)}</span>
+      <span className="text-[#757575]">({count} {count === 1 ? 'review' : 'reviews'})</span>
+    </span>
+  );
+
+  if (storeSlug) {
+    return (
+      <Link 
+        href={`/store/${storeSlug}#reviews`}
+        className="hover:opacity-80 transition-opacity"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
+}
+
 export default function ListingPage() {
   const params = useParams();
   const router = useRouter();
@@ -84,6 +156,10 @@ export default function ListingPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isContactingSeller, setIsContactingSeller] = useState(false);
+  const [storeRating, setStoreRating] = useState<number>(0);
+  const [reviewCount, setReviewCount] = useState<number>(0);
+  const [storeReviews, setStoreReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const isOwner = user && listing && user.id === listing.store.user_id;
 
@@ -116,6 +192,30 @@ export default function ListingPage() {
         }
 
         setListing(data);
+
+        // Fetch store reviews with reviewer info
+        if (data.store?.id) {
+          setReviewsLoading(true);
+          try {
+            const { data: reviewsData } = await supabase
+              .from('reviews')
+              .select('*, reviewer:users(id, name, profile_photo)')
+              .eq('store_id', data.store.id)
+              .order('created_at', { ascending: false });
+
+            if (reviewsData && reviewsData.length > 0) {
+              const totalRating = reviewsData.reduce((sum, review) => sum + review.rating, 0);
+              setStoreRating(totalRating / reviewsData.length);
+              setReviewCount(reviewsData.length);
+              // Store only 5 most recent reviews
+              setStoreReviews(reviewsData.slice(0, 5));
+            }
+          } finally {
+            setReviewsLoading(false);
+          }
+        } else {
+          setReviewsLoading(false);
+        }
 
         // Increment view count (don't await)
         supabase
@@ -492,15 +592,17 @@ export default function ListingPage() {
                         )}
                       </h4>
                     </Link>
-                    <div className="flex items-center gap-3 text-sm text-[#757575] mt-0.5">
-                      {listing.store.average_rating > 0 && (
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4 text-[#F56400]" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                          {listing.store.average_rating.toFixed(1)}
-                        </span>
-                      )}
+                    {/* Store Rating Display */}
+                    {storeRating > 0 && reviewCount > 0 && (
+                      <div className="mt-1">
+                        <StarRatingDisplay 
+                          rating={storeRating} 
+                          count={reviewCount}
+                          storeSlug={listing.store.slug}
+                        />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 text-sm text-[#757575] mt-1">
                       <span>{listing.store.total_sales} sales</span>
                     </div>
                   </div>
@@ -530,6 +632,19 @@ export default function ListingPage() {
                       )}
                     </button>
 
+                    {/* Review Seller Button - only for logged-in users */}
+                    {user && (
+                      <Link
+                        href={`/store/${listing.store.slug}#reviews`}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-3 border border-[#E5E5E5] hover:border-[#222222] transition-colors text-[#222222] font-medium"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                        Review Seller
+                      </Link>
+                    )}
+
                     {listing.store.telegram_handle && (
                       <a
                         href={`https://t.me/${listing.store.telegram_handle}`}
@@ -556,17 +671,6 @@ export default function ListingPage() {
                         Contact on WhatsApp
                       </a>
                     )}
-                    {listing.store.phone && (
-                      <a
-                        href={`tel:${listing.store.phone}`}
-                        className="flex items-center justify-center gap-2 w-full px-4 py-3 border border-[#222222] text-[#222222] hover:bg-[#222222] hover:text-white transition-colors font-medium"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                        Call Seller
-                      </a>
-                    )}
                   </div>
                 )}
               </div>
@@ -582,6 +686,116 @@ export default function ListingPage() {
               </div>
             </div>
           </div>
+
+          {/* Store Reviews Section */}
+          {storeReviews.length > 0 && (
+            <div className="mt-12 pb-8">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-[#222222]">Store Reviews</h2>
+                  {storeRating > 0 && (
+                    <Link 
+                      href={`/store/${listing.store.slug}#reviews`}
+                      className="flex items-center gap-2 mt-1 hover:opacity-80 transition-opacity"
+                    >
+                      <StarRating rating={storeRating} size="md" />
+                      <span className="text-[#222222] font-medium">{storeRating.toFixed(1)}</span>
+                      <span className="text-[#757575]">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</span>
+                    </Link>
+                  )}
+                </div>
+                <Link
+                  href={`/store/${listing.store.slug}#reviews`}
+                  className="text-sm text-[#F56400] hover:text-[#D95700] font-medium"
+                >
+                  See all reviews →
+                </Link>
+              </div>
+
+              {reviewsLoading ? (
+                <div className="bg-white border border-[#E5E5E5] p-8 text-center">
+                  <div className="animate-spin w-6 h-6 border-2 border-[#222222] border-t-transparent rounded-full mx-auto mb-2" />
+                  <p className="text-sm text-[#757575]">Loading reviews...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {storeReviews.map((review) => (
+                    <div key={review.id} className="bg-white border border-[#E5E5E5] p-6">
+                      <div className="flex items-start gap-4">
+                        {/* Reviewer Avatar */}
+                        <div className="w-10 h-10 bg-[#E5E5E5] rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center">
+                          {review.reviewer?.profile_photo ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={review.reviewer.profile_photo}
+                              alt={review.reviewer.name || 'Reviewer'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-[#757575]">
+                              {(review.reviewer?.name || 'U').charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Review Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="font-medium text-[#222222]">
+                              {review.reviewer?.name || 'Anonymous'}
+                            </span>
+                            <span className="text-sm text-[#757575]">
+                              {new Date(review.created_at).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          </div>
+                          
+                          <StarRating rating={review.rating} size="sm" />
+                          
+                          {review.comment && (
+                            <p className="mt-2 text-[#595959] leading-relaxed">{review.comment}</p>
+                          )}
+
+                          {/* Seller Response */}
+                          {review.seller_response && (
+                            <div className="mt-4 ml-4 pl-4 border-l-2 border-[#F56400] bg-[#FFF9F5] p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-[#F56400]">Seller Response</span>
+                                {review.seller_response_at && (
+                                  <span className="text-xs text-[#757575]">
+                                    {new Date(review.seller_response_at).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-[#595959]">{review.seller_response}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {reviewCount > 5 && (
+                    <div className="text-center pt-2">
+                      <Link
+                        href={`/store/${listing.store.slug}#reviews`}
+                        className="inline-flex items-center gap-2 px-6 py-3 border border-[#E5E5E5] hover:border-[#222222] transition-colors text-[#222222] font-medium"
+                      >
+                        See all {reviewCount} reviews
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Lightbox */}

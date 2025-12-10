@@ -21,6 +21,8 @@ interface ListingCardProps {
     store?: {
       name: string;
       slug: string;
+      average_rating?: number;
+      total_reviews?: number;
     };
   };
   showStore?: boolean;
@@ -91,8 +93,14 @@ export function ListingCard({ listing, showStore = false }: ListingCardProps) {
         </h3>
         
         {showStore && listing.store && (
-          <p className="text-xs text-[#757575] mt-1">
-            {listing.store.name}
+          <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
+            <span>{listing.store.name}</span>
+            {listing.store.average_rating && listing.store.average_rating > 0 && (
+              <span className="inline-flex items-center text-[#F56400]">
+                <span>★</span>
+                <span className="ml-0.5">{listing.store.average_rating.toFixed(1)}</span>
+              </span>
+            )}
           </p>
         )}
         

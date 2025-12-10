@@ -26,6 +26,7 @@ interface Listing {
     name: string;
     slug: string;
     location_country: string | null;
+    average_rating: number | null;
   } | null;
 }
 
@@ -72,7 +73,7 @@ function SearchContent() {
           category_id,
           categories!inner(slug),
           listing_images(url, is_primary, position),
-          store:stores!inner(name, slug, location_country)
+          store:stores!inner(name, slug, location_country, average_rating)
         `, { count: 'exact' })
         .eq('status', 'active');
 
@@ -305,8 +306,14 @@ function SearchContent() {
                           </h3>
                           
                           {listing.store && (
-                            <p className="text-xs text-[#757575] mt-1">
-                              {listing.store.name}
+                            <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
+                              <span>{listing.store.name}</span>
+                              {listing.store.average_rating && listing.store.average_rating > 0 && (
+                                <span className="inline-flex items-center text-[#F56400]">
+                                  <span>★</span>
+                                  <span className="ml-0.5">{listing.store.average_rating.toFixed(1)}</span>
+                                </span>
+                              )}
                             </p>
                           )}
                           

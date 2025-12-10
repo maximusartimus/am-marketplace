@@ -12,6 +12,7 @@ interface Listing {
   currency: string;
   image: string | null;
   storeName: string;
+  storeRating: number | null;
   condition: string;
 }
 
@@ -50,7 +51,7 @@ export function FeaturedListings() {
             price,
             currency,
             condition,
-            store:stores(name),
+            store:stores(name, average_rating),
             listing_images!inner(url, is_primary, position)
           `)
           .eq('status', 'active')
@@ -78,6 +79,7 @@ export function FeaturedListings() {
             currency: item.currency || 'AMD',
             image: primaryImage?.url || null,
             storeName: item.store?.[0]?.name || 'Unknown Store',
+            storeRating: item.store?.[0]?.average_rating || null,
             condition: item.condition || '',
           };
         });
@@ -250,8 +252,14 @@ export function FeaturedListings() {
                 <h3 className="font-medium text-[#222222] text-sm leading-tight group-hover:underline line-clamp-2">
                   {listing.title}
                 </h3>
-                <p className="text-xs text-[#757575] mt-1">
-                  {listing.storeName}
+                <p className="text-xs text-[#757575] mt-1 flex items-center gap-1">
+                  <span>{listing.storeName}</span>
+                  {listing.storeRating && listing.storeRating > 0 && (
+                    <span className="inline-flex items-center text-[#F56400]">
+                      <span>★</span>
+                      <span className="ml-0.5">{listing.storeRating.toFixed(1)}</span>
+                    </span>
+                  )}
                 </p>
                 <div className="mt-2">
                   <span className="font-medium text-[#222222] text-sm">
