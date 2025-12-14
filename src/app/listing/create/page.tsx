@@ -251,6 +251,29 @@ function CreateListingForm() {
         // Listing was created, but images failed - still redirect
       }
 
+      // Notify all followers of the store about the new listing (don't block on failure)
+      try {
+        const { data: followers } = await supabase
+          .from('store_followers')
+          .select('user_id')
+          .eq('store_id', store.id);
+        
+        if (followers && followers.length > 0) {
+          const notifications = followers.map(f => ({
+            user_id: f.user_id,
+            type: 'new_listing',
+            title: `New listing from ${store.name}`,
+            body: formData.title.trim().substring(0, 100),
+            link: `/listing/${listing.id}`,
+            related_id: listing.id,
+          }));
+          await supabase.from('notifications').insert(notifications);
+        }
+      } catch (notifError) {
+        // Fail silently - don't block listing creation
+        console.error('Failed to create notifications:', notifError);
+      }
+
       // Redirect to the listing page
       router.push(`/listing/${listing.id}?created=true`);
     } catch (err) {

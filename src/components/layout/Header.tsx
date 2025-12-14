@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { NotificationDropdown } from '@/components/notifications/NotificationDropdown';
 
 const languages = [
   { code: 'hy', label: 'HY' },
@@ -32,6 +33,7 @@ export function Header() {
   const [storeLoading, setStoreLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -160,6 +162,40 @@ export function Header() {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Fetch unread notification count
+  useEffect(() => {
+    async function fetchUnreadNotificationCount() {
+      if (!user) {
+        setUnreadNotificationCount(0);
+        return;
+      }
+
+      try {
+        const { count, error } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('is_read', false);
+
+        if (error) {
+          console.error('Error fetching notification count:', error);
+          setUnreadNotificationCount(0);
+        } else {
+          setUnreadNotificationCount(count || 0);
+        }
+      } catch (err) {
+        console.error('Error fetching notification count:', err);
+        setUnreadNotificationCount(0);
+      }
+    }
+
+    fetchUnreadNotificationCount();
+    
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchUnreadNotificationCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   // Close user menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -285,6 +321,15 @@ export function Header() {
               )}
             </div>
 
+            {/* Notifications icon - only show when logged in */}
+            {user && (
+              <NotificationDropdown
+                userId={user.id}
+                unreadCount={unreadNotificationCount}
+                onUnreadCountChange={setUnreadNotificationCount}
+              />
+            )}
+
             {/* Messages icon - only show when logged in */}
             {user && (
               <Link
@@ -376,11 +421,28 @@ export function Header() {
                       </Link>
                     )}
                     <Link
+                      href="/account/notifications"
+                      onClick={() => setIsUserMenuOpen(false)}
+                      className="block px-4 py-2 text-sm text-[#222222] hover:bg-[#F5F5F5]"
+                    >
+                      Notifications
+                      {unreadNotificationCount > 0 && (
+                        <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-[#F56400] text-white rounded-full">
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </span>
+                      )}
+                    </Link>
+                    <Link
                       href="/messages"
                       onClick={() => setIsUserMenuOpen(false)}
                       className="block px-4 py-2 text-sm text-[#222222] hover:bg-[#F5F5F5]"
                     >
                       Messages
+                      {unreadMessageCount > 0 && (
+                        <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-[#F56400] text-white rounded-full">
+                          {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                        </span>
+                      )}
                     </Link>
                     <div className="border-t border-[#E5E5E5]">
                       <Link
@@ -487,11 +549,30 @@ export function Header() {
                   )}
                   <li>
                     <Link
+                      href="/account/notifications"
+                      className="block py-3 px-4 text-sm font-medium hover:bg-[#F5F5F5]"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Notifications
+                      {unreadNotificationCount > 0 && (
+                        <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold bg-[#F56400] text-white rounded-full">
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
                       href="/messages"
                       className="block py-3 px-4 text-sm font-medium hover:bg-[#F5F5F5]"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Messages
+                      {unreadMessageCount > 0 && (
+                        <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold bg-[#F56400] text-white rounded-full">
+                          {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
+                        </span>
+                      )}
                     </Link>
                   </li>
                   <li>

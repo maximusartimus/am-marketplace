@@ -112,6 +112,33 @@ export function FollowButton({ storeId, storeOwnerId, showCount = true, size = '
         }
         setIsFollowing(true);
         setFollowerCount(prev => prev + 1);
+
+        // Create notification for the store owner (don't block on failure)
+        try {
+          // Don't notify yourself
+          if (storeOwnerId !== user.id) {
+            // Get store slug for the notification link
+            const { data: storeData } = await supabase
+              .from('stores')
+              .select('slug')
+              .eq('id', storeId)
+              .single();
+
+            const followerName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Someone';
+            
+            await supabase.from('notifications').insert({
+              user_id: storeOwnerId,
+              type: 'new_follower',
+              title: `${followerName} started following your store`,
+              body: null,
+              link: `/store/${storeData?.slug || storeId}`,
+              related_id: storeId,
+            });
+          }
+        } catch (notifError) {
+          // Fail silently - don't block follow action
+          console.error('Failed to create notification:', notifError);
+        }
       }
     } catch (err) {
       console.error('Error toggling follow:', err);
@@ -190,3 +217,4 @@ export function FollowButton({ storeId, storeOwnerId, showCount = true, size = '
     </div>
   );
 }
+

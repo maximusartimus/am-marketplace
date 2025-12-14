@@ -550,6 +550,17 @@ function EditListingForm() {
     setError(null);
 
     try {
+      // Get current price before updating (for price drop notification)
+      const { data: currentListing } = await supabase
+        .from('listings')
+        .select('price, title_en')
+        .eq('id', listingId)
+        .single();
+      
+      const oldPrice = currentListing?.price || 0;
+      const newPrice = parseFloat(formData.price);
+      const listingTitle = formData.title.trim() || currentListing?.title_en || 'Listing';
+
       // Step 1: Update listing details
       const { error: updateError } = await supabase
         .from('listings')
@@ -557,7 +568,7 @@ function EditListingForm() {
           category_id: formData.categoryId,
           title_en: formData.title.trim(),
           description_en: formData.description.trim() || null,
-          price: parseFloat(formData.price),
+          price: newPrice,
           currency: formData.currency,
           condition: formData.condition,
           delivery_methods: formData.deliveryMethods,
@@ -567,6 +578,32 @@ function EditListingForm() {
       if (updateError) {
         setError('Failed to update listing. Please try again.');
         return;
+      }
+
+      // Step 1.5: Send price drop notifications if price was lowered
+      if (newPrice < oldPrice) {
+        try {
+          const { data: favorites } = await supabase
+            .from('favorites')
+            .select('user_id')
+            .eq('listing_id', listingId);
+          
+          if (favorites && favorites.length > 0) {
+            const currencySymbol = formData.currency === 'AMD' ? '֏' : '$';
+            const notifications = favorites.map(f => ({
+              user_id: f.user_id,
+              type: 'price_drop',
+              title: `Price drop on ${listingTitle.substring(0, 50)}`,
+              body: `Now ${currencySymbol}${newPrice.toLocaleString()} (was ${currencySymbol}${oldPrice.toLocaleString()})`,
+              link: `/listing/${listingId}`,
+              related_id: listingId,
+            }));
+            await supabase.from('notifications').insert(notifications);
+          }
+        } catch (notifError) {
+          // Fail silently - don't block listing update
+          console.error('Failed to create price drop notifications:', notifError);
+        }
       }
 
       // Step 2: Update positions for remaining existing images

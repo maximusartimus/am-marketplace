@@ -241,6 +241,30 @@ export default function ConversationPage() {
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversation.id);
 
+      // Create notification for the recipient (don't block on failure)
+      try {
+        const recipientId = conversation.buyer_id === user.id 
+          ? conversation.seller_id 
+          : conversation.buyer_id;
+        
+        // Don't notify yourself
+        if (recipientId !== user.id) {
+          const senderName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Someone';
+          
+          await supabase.from('notifications').insert({
+            user_id: recipientId,
+            type: 'new_message',
+            title: `New message from ${senderName}`,
+            body: messageBody.substring(0, 100),
+            link: `/messages/${conversation.id}`,
+            related_id: conversation.id,
+          });
+        }
+      } catch (notifError) {
+        // Fail silently - don't block message sending
+        console.error('Failed to create notification:', notifError);
+      }
+
       // Focus input
       inputRef.current?.focus();
     } catch (err) {

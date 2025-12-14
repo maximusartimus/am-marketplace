@@ -78,3 +78,4 @@ WHERE tablename = 'listing_images';
 
 
 
+

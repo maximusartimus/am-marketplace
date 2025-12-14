@@ -75,3 +75,4 @@ export const DURATION_PRESETS = [
 
 // Discount presets
 export const DISCOUNT_PRESETS = [5, 10, 15, 20, 25, 30, 50] as const;
+

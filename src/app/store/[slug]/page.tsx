@@ -241,12 +241,12 @@ export default function StorePage() {
     setReviewError(null);
 
     try {
-      const { error } = await supabase.from('reviews').insert({
+      const { data: reviewData, error } = await supabase.from('reviews').insert({
         store_id: store.id,
         reviewer_id: user.id,
         rating: reviewRating,
         comment: reviewComment.trim() || null,
-      });
+      }).select().single();
 
       if (error) {
         if (error.code === '23505') {
@@ -256,6 +256,26 @@ export default function StorePage() {
         }
         console.error('Error submitting review:', error);
         return;
+      }
+
+      // Create notification for the store owner (don't block on failure)
+      try {
+        // Don't notify yourself
+        if (store.user_id !== user.id) {
+          const reviewerName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Someone';
+          
+          await supabase.from('notifications').insert({
+            user_id: store.user_id,
+            type: 'new_review',
+            title: `New ${reviewRating}-star review on your store`,
+            body: reviewComment.trim() ? reviewComment.trim().substring(0, 100) : null,
+            link: `/store/${store.slug}#reviews`,
+            related_id: reviewData?.id || null,
+          });
+        }
+      } catch (notifError) {
+        // Fail silently - don't block review submission
+        console.error('Failed to create notification:', notifError);
       }
 
       // Reset form and refresh reviews
