@@ -10,6 +10,8 @@ import { ListingCard } from '@/components/listings/ListingCard';
 import { FollowButton } from '@/components/stores/FollowButton';
 import { StoreBadges } from '@/components/stores/StoreBadges';
 import { ReportModal } from '@/components/ui/ReportModal';
+import { ShareButton } from '@/components/ui/ShareButton';
+import { StoreLinkCard } from '@/components/ui/StoreLinkCard';
 
 interface Store {
   id: string;
@@ -199,6 +201,9 @@ export default function StorePage() {
   
   // Report modal state
   const [showReportModal, setShowReportModal] = useState(false);
+  
+  // Store URL for sharing
+  const [storeUrl, setStoreUrl] = useState('');
 
   const isOwner = user && store && user.id === store.user_id;
 
@@ -577,6 +582,13 @@ export default function StorePage() {
     }
   }, [store?.id, fetchReviews]);
 
+  // Set store URL on client-side
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setStoreUrl(window.location.href);
+    }
+  }, []);
+
   // Smooth scroll to reviews section if hash is #reviews
   useEffect(() => {
     if (typeof window !== 'undefined' && window.location.hash === '#reviews') {
@@ -809,6 +821,16 @@ export default function StorePage() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-3">
+                  {/* Share Button */}
+                  {store && (
+                    <ShareButton
+                      type="store"
+                      url={storeUrl || `/store/${store.slug}`}
+                      title={store.name}
+                      variant="button"
+                    />
+                  )}
+                  
                   {/* Follow Button - only for non-owners */}
                   {store && (
                     <FollowButton 
@@ -928,6 +950,11 @@ export default function StorePage() {
             <p className="text-xs text-[#757575] uppercase tracking-wide">Reviews</p>
           </div>
         </div>
+
+        {/* Store Link Card - for store owners */}
+        {isOwner && isApproved && storeUrl && (
+          <StoreLinkCard storeUrl={storeUrl} storeName={store.name} />
+        )}
 
         {/* Listings Section */}
         <div className="pb-12">

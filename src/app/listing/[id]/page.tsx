@@ -11,6 +11,7 @@ import { FollowButton } from '@/components/stores/FollowButton';
 import { StoreBadges } from '@/components/stores/StoreBadges';
 import { ReportModal } from '@/components/ui/ReportModal';
 import { SaleModal } from '@/components/listings/SaleModal';
+import { ShareButton } from '@/components/ui/ShareButton';
 import { Promotion, isPromotionActive, formatSaleTimeRemaining, formatSaleEndDate } from '@/lib/promotions';
 
 interface ListingImage {
@@ -170,6 +171,7 @@ export default function ListingPage() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [showSaleModal, setShowSaleModal] = useState(false);
+  const [listingUrl, setListingUrl] = useState('');
 
   const isOwner = user && listing && user.id === listing.store.user_id;
   const activePromotion = promotion && isPromotionActive(promotion) ? promotion : null;
@@ -284,6 +286,13 @@ export default function ListingPage() {
 
     setPromotion(promotionData || null);
   };
+
+  // Set the listing URL on client-side
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setListingUrl(window.location.href);
+    }
+  }, []);
 
   // Track recently viewed for logged-in users
   useEffect(() => {
@@ -557,6 +566,14 @@ export default function ListingPage() {
                     {listing.title_en}
                   </h1>
                   <div className="flex gap-2 flex-shrink-0">
+                    {/* Share Button */}
+                    <ShareButton
+                      type="listing"
+                      url={listingUrl || `/listing/${listing.id}`}
+                      title={listing.title_en}
+                      size="large"
+                      className="border border-[#E5E5E5]"
+                    />
                     {/* Favorite Button - always visible for non-owners */}
                     {!isOwner && (
                       <FavoriteButton listingId={listing.id} size="large" />
