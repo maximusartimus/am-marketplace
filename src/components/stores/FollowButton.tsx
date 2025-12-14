@@ -8,6 +8,7 @@ interface FollowButtonProps {
   storeId: string;
   storeOwnerId: string;
   showCount?: boolean;
+  countOnly?: boolean;  // Only show follower count, no button
   size?: 'small' | 'medium';
 }
 
@@ -21,7 +22,7 @@ function formatFollowerCount(count: number): string {
   return count.toString();
 }
 
-export function FollowButton({ storeId, storeOwnerId, showCount = true, size = 'medium' }: FollowButtonProps) {
+export function FollowButton({ storeId, storeOwnerId, showCount = true, countOnly = false, size = 'medium' }: FollowButtonProps) {
   const { user } = useAuth();
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
@@ -147,9 +148,25 @@ export function FollowButton({ storeId, storeOwnerId, showCount = true, size = '
     }
   };
 
-  // Don't show for store owner
+  // If countOnly mode, just show the follower count text
+  if (countOnly) {
+    if (loading) {
+      return (
+        <span className="text-sm text-[#757575]">
+          <span className="inline-block w-12 h-4 bg-[#E5E5E5] animate-pulse rounded" />
+        </span>
+      );
+    }
+    return (
+      <span className="text-sm text-[#757575]">
+        {formatFollowerCount(followerCount)} {followerCount === 1 ? 'follower' : 'followers'}
+      </span>
+    );
+  }
+
+  // Don't show button for store owner
   if (isOwner) {
-    // Show follower count only for owner
+    // Show follower count only for owner (when not countOnly mode)
     if (showCount && followerCount > 0) {
       return (
         <span className="text-sm text-[#757575]">

@@ -62,7 +62,7 @@ function SearchContent() {
     try {
       const now = new Date().toISOString();
       
-      // Start building the query
+      // Start building the query (exclude listings from deleted stores)
       let queryBuilder = supabase
         .from('listings')
         .select(`
@@ -78,10 +78,11 @@ function SearchContent() {
           category_id,
           categories!inner(slug),
           listing_images(url, is_primary, position),
-          store:stores!inner(name, slug, location_country, average_rating),
+          store:stores!inner(name, slug, location_country, average_rating, deleted_at),
           listing_promotions(*)
         `, { count: 'exact' })
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .is('stores.deleted_at', null);
 
       // Apply text search if query exists
       if (query) {

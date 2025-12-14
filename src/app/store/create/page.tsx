@@ -479,6 +479,20 @@ function CreateStoreForm() {
     try {
       const slug = generateSlug(formData.name);
       
+      // Check if user already has an active store
+      const { data: userActiveStore } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('deleted_at', null)
+        .single();
+
+      if (userActiveStore) {
+        setError('You already have an active store. Each user can only have one store.');
+        setIsSubmitting(false);
+        return;
+      }
+
       // Check if slug already exists
       const { data: existingStore } = await supabase
         .from('stores')
@@ -534,7 +548,7 @@ function CreateStoreForm() {
       if (insertError) {
         console.error('Error creating store:', insertError);
         if (insertError.code === '23505') {
-          setError('You already have a store. Each user can only have one store.');
+          setError('A store with this name or slug already exists. Please try a different name.');
         } else {
           setError(insertError.message || 'Failed to create store. Please try again.');
         }

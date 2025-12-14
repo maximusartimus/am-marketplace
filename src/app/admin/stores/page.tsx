@@ -16,13 +16,19 @@ interface Store {
   is_verified: boolean;
   is_top_seller: boolean;
   is_featured: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
   user?: {
+    name: string;
+    email: string;
+  };
+  deleted_by_user?: {
     name: string;
     email: string;
   };
 }
 
-type StatusFilter = 'all' | 'pending' | 'approved' | 'needs_info' | 'rejected';
+type StatusFilter = 'all' | 'pending' | 'approved' | 'needs_info' | 'rejected' | 'deleted';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -47,6 +53,12 @@ export default function AdminStores() {
   
   // Badge toggle loading states
   const [badgeLoading, setBadgeLoading] = useState<{ [key: string]: boolean }>({});
+  
+  // Delete/Restore modal states
+  const [restoreStore, setRestoreStore] = useState<Store | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [permanentDeleteStore, setPermanentDeleteStore] = useState<Store | null>(null);
+  const [permanentDeleteLoading, setPermanentDeleteLoading] = useState(false);
 
   const fetchStores = useCallback(async () => {
     setLoading(true);
@@ -62,11 +74,19 @@ export default function AdminStores() {
           user_id,
           is_verified,
           is_top_seller,
-          is_featured
+          is_featured,
+          deleted_at,
+          deleted_by
         `, { count: 'exact' });
 
-      if (statusFilter !== 'all') {
-        query = query.eq('approval_status', statusFilter);
+      // Filter by deleted or active stores
+      if (statusFilter === 'deleted') {
+        query = query.not('deleted_at', 'is', null);
+      } else {
+        query = query.is('deleted_at', null);
+        if (statusFilter !== 'all') {
+          query = query.eq('approval_status', statusFilter);
+        }
       }
 
       query = query
@@ -80,16 +100,20 @@ export default function AdminStores() {
       // Fetch user info for each store
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map(s => s.user_id))];
+        const deletedByIds = [...new Set(data.filter(s => s.deleted_by).map(s => s.deleted_by!))];
+        const allUserIds = [...new Set([...userIds, ...deletedByIds])];
+        
         const { data: users } = await supabase
           .from('users')
           .select('id, name, email')
-          .in('id', userIds);
+          .in('id', allUserIds);
 
         const userMap = new Map(users?.map(u => [u.id, u]) || []);
         
         const storesWithUsers = data.map(store => ({
           ...store,
           user: userMap.get(store.user_id),
+          deleted_by_user: store.deleted_by ? userMap.get(store.deleted_by) : undefined,
         }));
 
         setStores(storesWithUsers);
@@ -229,6 +253,52 @@ export default function AdminStores() {
     }
   };
 
+  // Handle restore store
+  const handleRestoreStore = async () => {
+    if (!restoreStore) return;
+
+    setRestoreLoading(true);
+    try {
+      const { error } = await supabase
+        .from('stores')
+        .update({ deleted_at: null, deleted_by: null })
+        .eq('id', restoreStore.id);
+
+      if (error) throw error;
+
+      setRestoreStore(null);
+      fetchStores();
+    } catch (error) {
+      console.error('Error restoring store:', error);
+      alert('Failed to restore store. Please try again.');
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  // Handle permanent delete
+  const handlePermanentDelete = async () => {
+    if (!permanentDeleteStore) return;
+
+    setPermanentDeleteLoading(true);
+    try {
+      const { error } = await supabase
+        .from('stores')
+        .delete()
+        .eq('id', permanentDeleteStore.id);
+
+      if (error) throw error;
+
+      setPermanentDeleteStore(null);
+      fetchStores();
+    } catch (error) {
+      console.error('Error permanently deleting store:', error);
+      alert('Failed to delete store. Please try again.');
+    } finally {
+      setPermanentDeleteLoading(false);
+    }
+  };
+
   const getStatusBadge = (status: Store['approval_status']) => {
     const styles = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -258,14 +328,14 @@ export default function AdminStores() {
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex flex-wrap gap-2">
-          {(['all', 'pending', 'approved', 'needs_info', 'rejected'] as StatusFilter[]).map((status) => (
+          {(['all', 'pending', 'approved', 'needs_info', 'rejected', 'deleted'] as StatusFilter[]).map((status) => (
             <button
               key={status}
               onClick={() => handleStatusFilterChange(status)}
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                 statusFilter === status
-                  ? 'bg-[#222222] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? status === 'deleted' ? 'bg-[#D32F2F] text-white' : 'bg-[#222222] text-white'
+                  : status === 'deleted' ? 'bg-red-50 text-red-700 hover:bg-red-100' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               {status === 'all' ? 'All' : status === 'needs_info' ? 'Needs Info' : status.charAt(0).toUpperCase() + status.slice(1)}
@@ -286,15 +356,28 @@ export default function AdminStores() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Owner
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Badges
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created
-                </th>
+                {statusFilter === 'deleted' ? (
+                  <>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Deleted Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Deleted By
+                    </th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Badges
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created
+                    </th>
+                  </>
+                )}
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
@@ -330,123 +413,166 @@ export default function AdminStores() {
                         <p className="text-sm text-gray-500">{store.user?.email || '-'}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(store.approval_status)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {/* Verified Badge Toggle */}
-                        <button
-                          onClick={() => handleBadgeToggle(store.id, 'is_verified', store.is_verified)}
-                          disabled={badgeLoading[`${store.id}-is_verified`]}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
-                            store.is_verified
-                              ? 'bg-[#1976D2] text-white hover:bg-[#1565C0]'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          } ${badgeLoading[`${store.id}-is_verified`] ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title={store.is_verified ? 'Click to unverify' : 'Click to verify'}
-                        >
-                          {badgeLoading[`${store.id}-is_verified`] ? (
-                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          Verified
-                        </button>
-                        
-                        {/* Top Seller Badge Toggle */}
-                        <button
-                          onClick={() => handleBadgeToggle(store.id, 'is_top_seller', store.is_top_seller)}
-                          disabled={badgeLoading[`${store.id}-is_top_seller`]}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
-                            store.is_top_seller
-                              ? 'bg-[#F56400] text-white hover:bg-[#D95700]'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          } ${badgeLoading[`${store.id}-is_top_seller`] ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title={store.is_top_seller ? 'Click to remove Top Seller' : 'Click to mark as Top Seller'}
-                        >
-                          {badgeLoading[`${store.id}-is_top_seller`] ? (
-                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                            </svg>
-                          )}
-                          Top Seller
-                        </button>
-                        
-                        {/* Featured Badge Toggle */}
-                        <button
-                          onClick={() => handleBadgeToggle(store.id, 'is_featured', store.is_featured)}
-                          disabled={badgeLoading[`${store.id}-is_featured`]}
-                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
-                            store.is_featured
-                              ? 'bg-[#9C27B0] text-white hover:bg-[#7B1FA2]'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          } ${badgeLoading[`${store.id}-is_featured`] ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          title={store.is_featured ? 'Click to unfeature' : 'Click to feature'}
-                        >
-                          {badgeLoading[`${store.id}-is_featured`] ? (
-                            <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                          Featured
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {new Date(store.created_at).toLocaleDateString()}
-                    </td>
+                    {statusFilter === 'deleted' ? (
+                      <>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {store.deleted_at ? new Date(store.deleted_at).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div>
+                            {store.deleted_by_user ? (
+                              <>
+                                <p className="text-sm text-gray-900">{store.deleted_by_user.name || 'Unknown'}</p>
+                                <p className="text-xs text-gray-500">
+                                  {store.deleted_by === store.user_id ? '(Owner)' : '(Admin)'}
+                                </p>
+                              </>
+                            ) : (
+                              <span className="text-sm text-gray-500">-</span>
+                            )}
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-6 py-4">
+                          {getStatusBadge(store.approval_status)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1.5">
+                            {/* Verified Badge Toggle */}
+                            <button
+                              onClick={() => handleBadgeToggle(store.id, 'is_verified', store.is_verified)}
+                              disabled={badgeLoading[`${store.id}-is_verified`]}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                                store.is_verified
+                                  ? 'bg-[#1976D2] text-white hover:bg-[#1565C0]'
+                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              } ${badgeLoading[`${store.id}-is_verified`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title={store.is_verified ? 'Click to unverify' : 'Click to verify'}
+                            >
+                              {badgeLoading[`${store.id}-is_verified`] ? (
+                                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              Verified
+                            </button>
+                            
+                            {/* Top Seller Badge Toggle */}
+                            <button
+                              onClick={() => handleBadgeToggle(store.id, 'is_top_seller', store.is_top_seller)}
+                              disabled={badgeLoading[`${store.id}-is_top_seller`]}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                                store.is_top_seller
+                                  ? 'bg-[#F56400] text-white hover:bg-[#D95700]'
+                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              } ${badgeLoading[`${store.id}-is_top_seller`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title={store.is_top_seller ? 'Click to remove Top Seller' : 'Click to mark as Top Seller'}
+                            >
+                              {badgeLoading[`${store.id}-is_top_seller`] ? (
+                                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                              )}
+                              Top Seller
+                            </button>
+                            
+                            {/* Featured Badge Toggle */}
+                            <button
+                              onClick={() => handleBadgeToggle(store.id, 'is_featured', store.is_featured)}
+                              disabled={badgeLoading[`${store.id}-is_featured`]}
+                              className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors ${
+                                store.is_featured
+                                  ? 'bg-[#9C27B0] text-white hover:bg-[#7B1FA2]'
+                                  : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              } ${badgeLoading[`${store.id}-is_featured`] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title={store.is_featured ? 'Click to unfeature' : 'Click to feature'}
+                            >
+                              {badgeLoading[`${store.id}-is_featured`] ? (
+                                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M5 2a1 1 0 011 1v1h1a1 1 0 010 2H6v1a1 1 0 01-2 0V6H3a1 1 0 010-2h1V3a1 1 0 011-1zm0 10a1 1 0 011 1v1h1a1 1 0 110 2H6v1a1 1 0 11-2 0v-1H3a1 1 0 110-2h1v-1a1 1 0 011-1zM12 2a1 1 0 01.967.744L14.146 7.2 17.5 9.134a1 1 0 010 1.732l-3.354 1.935-1.18 4.455a1 1 0 01-1.933 0L9.854 12.8 6.5 10.866a1 1 0 010-1.732l3.354-1.935 1.18-4.455A1 1 0 0112 2z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                              Featured
+                            </button>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {new Date(store.created_at).toLocaleDateString()}
+                        </td>
+                      </>
+                    )}
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-2">
-                        <Link
-                          href={`/store/${store.slug}`}
-                          target="_blank"
-                          className="text-sm text-blue-600 hover:underline"
-                        >
-                          View
-                        </Link>
-                        {store.approval_status === 'pending' && (
+                        {statusFilter === 'deleted' ? (
                           <>
                             <button
-                              onClick={() => openActionModal(store, 'approve')}
+                              onClick={() => setRestoreStore(store)}
                               className="text-sm text-green-600 hover:underline"
                             >
-                              Approve
+                              Restore
                             </button>
                             <button
-                              onClick={() => openActionModal(store, 'reject')}
+                              onClick={() => setPermanentDeleteStore(store)}
                               className="text-sm text-red-600 hover:underline"
                             >
-                              Reject
-                            </button>
-                            <button
-                              onClick={() => openActionModal(store, 'request_info')}
-                              className="text-sm text-orange-600 hover:underline"
-                            >
-                              Request Info
+                              Delete Permanently
                             </button>
                           </>
-                        )}
-                        {store.approval_status === 'needs_info' && (
+                        ) : (
                           <>
-                            <button
-                              onClick={() => openActionModal(store, 'approve')}
-                              className="text-sm text-green-600 hover:underline"
+                            <Link
+                              href={`/store/${store.slug}`}
+                              target="_blank"
+                              className="text-sm text-blue-600 hover:underline"
                             >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => openActionModal(store, 'reject')}
-                              className="text-sm text-red-600 hover:underline"
-                            >
-                              Reject
-                            </button>
+                              View
+                            </Link>
+                            {store.approval_status === 'pending' && (
+                              <>
+                                <button
+                                  onClick={() => openActionModal(store, 'approve')}
+                                  className="text-sm text-green-600 hover:underline"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => openActionModal(store, 'reject')}
+                                  className="text-sm text-red-600 hover:underline"
+                                >
+                                  Reject
+                                </button>
+                                <button
+                                  onClick={() => openActionModal(store, 'request_info')}
+                                  className="text-sm text-orange-600 hover:underline"
+                                >
+                                  Request Info
+                                </button>
+                              </>
+                            )}
+                            {store.approval_status === 'needs_info' && (
+                              <>
+                                <button
+                                  onClick={() => openActionModal(store, 'approve')}
+                                  className="text-sm text-green-600 hover:underline"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => openActionModal(store, 'reject')}
+                                  className="text-sm text-red-600 hover:underline"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
                           </>
                         )}
                       </div>
@@ -540,6 +666,95 @@ export default function AdminStores() {
                 }`}
               >
                 {actionLoading ? 'Processing...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Store Modal */}
+      {restoreStore && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Restore Store</h3>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to restore <strong>{restoreStore.name}</strong>? 
+              This will make the store and its listings visible again on the marketplace.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setRestoreStore(null)}
+                disabled={restoreLoading}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRestoreStore}
+                disabled={restoreLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {restoreLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  'Restore Store'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Delete Modal */}
+      {permanentDeleteStore && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-red-600 mb-4">Permanently Delete Store</h3>
+            
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex gap-3">
+                <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-red-600">Warning: This action is irreversible!</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    This will permanently delete the store along with all its listings, reviews, sections, and followers.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-6">
+              Are you sure you want to permanently delete <strong>{permanentDeleteStore.name}</strong>?
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setPermanentDeleteStore(null)}
+                disabled={permanentDeleteLoading}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePermanentDelete}
+                disabled={permanentDeleteLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {permanentDeleteLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete Permanently'
+                )}
               </button>
             </div>
           </div>

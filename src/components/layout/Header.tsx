@@ -69,6 +69,7 @@ export function Header() {
           .from('stores')
           .select('slug, name')
           .eq('user_id', user.id)
+          .is('deleted_at', null)
           .single();
 
         if (error) {

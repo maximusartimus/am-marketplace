@@ -359,6 +359,11 @@ function EditStoreForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   
+  // Delete store state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -384,11 +389,12 @@ function EditStoreForm() {
           .from('stores')
           .select('*')
           .eq('user_id', user.id)
+          .is('deleted_at', null)
           .single();
 
         if (fetchError) {
           if (fetchError.code === 'PGRST116') {
-            // No store found - redirect to create
+            // No active store found - redirect to create
             router.push('/store/create');
             return;
           }
@@ -545,6 +551,37 @@ function EditStoreForm() {
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteStore = async () => {
+    if (!user || !store) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('stores')
+        .update({ 
+          deleted_at: new Date().toISOString(),
+          deleted_by: user.id 
+        })
+        .eq('id', store.id);
+
+      if (deleteError) {
+        console.error('Error deleting store:', deleteError);
+        setDeleteError('Failed to delete store. Please try again.');
+        return;
+      }
+
+      // Redirect to account page with success message
+      router.push('/account?store_deleted=true');
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      setDeleteError('An unexpected error occurred. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -846,6 +883,79 @@ function EditStoreForm() {
             </button>
           </div>
         </form>
+
+        {/* Danger Zone - Delete Store */}
+        <div className="bg-white border border-[#D32F2F] p-6 md:p-8 mt-6">
+          <h2 className="text-lg font-semibold text-[#D32F2F] mb-4">Danger Zone</h2>
+          <p className="text-sm text-[#757575] mb-4">
+            Deleting your store will remove it from the marketplace. All your listings will also be hidden. This action can be reversed by contacting support.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowDeleteModal(true)}
+            className="px-6 py-3 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-medium transition-colors"
+          >
+            Delete Store
+          </button>
+        </div>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-[#222222] mb-4">Delete Store</h3>
+              
+              <div className="mb-6">
+                <div className="flex items-center gap-3 p-4 bg-[#FFEBEE] border border-[#D32F2F] mb-4">
+                  <svg className="w-6 h-6 text-[#D32F2F] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="font-medium text-[#D32F2F]">Warning</p>
+                    <p className="text-sm text-[#D32F2F]">This will remove your store and all listings from the marketplace.</p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-[#595959]">
+                  Are you sure you want to delete <strong>{store.name}</strong>? 
+                </p>
+              </div>
+
+              {deleteError && (
+                <div className="mb-4 p-3 bg-[#FFEBEE] border border-[#D32F2F] text-[#D32F2F] text-sm">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeleteError(null);
+                  }}
+                  disabled={isDeleting}
+                  className="px-4 py-2 border border-[#E5E5E5] text-[#222222] hover:bg-[#F5F5F5] transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteStore}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-[#D32F2F] hover:bg-[#B71C1C] text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Yes, Delete Store'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Help Text */}
         <div className="mt-6 text-center">

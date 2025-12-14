@@ -55,11 +55,12 @@ export function FeaturedListings() {
             price,
             currency,
             condition,
-            store:stores(id, name, slug, is_verified, average_rating),
+            store:stores!inner(id, name, slug, is_verified, average_rating, deleted_at),
             listing_images!inner(url, is_primary, position),
             listing_promotions(*)
           `)
           .eq('status', 'active')
+          .is('stores.deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(8);
 

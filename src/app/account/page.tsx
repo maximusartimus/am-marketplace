@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { supabase } from '@/lib/supabase';
@@ -31,10 +32,14 @@ interface UserStore {
 
 function AccountContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const storeDeleted = searchParams.get('store_deleted') === 'true';
+  
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [store, setStore] = useState<UserStore | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteSuccess, setShowDeleteSuccess] = useState(storeDeleted);
 
   useEffect(() => {
     async function fetchProfileAndStore() {
@@ -55,11 +60,12 @@ function AccountContent() {
           setProfile(profileData);
         }
 
-        // Fetch user's store
+        // Fetch user's active store (exclude deleted stores)
         const { data: storeData } = await supabase
           .from('stores')
           .select('slug, name')
           .eq('user_id', user.id)
+          .is('deleted_at', null)
           .single();
 
         if (storeData) {
@@ -146,6 +152,30 @@ function AccountContent() {
     <>
       <Header />
       <div className="min-h-screen bg-[#F5F5F5]">
+        {/* Store Deleted Success Banner */}
+        {showDeleteSuccess && (
+          <div className="bg-[#E8F5E9] border-b border-[#2E7D32]">
+            <div className="max-w-2xl mx-auto px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-[#2E7D32] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-[#2E7D32] font-medium">Your store has been deleted successfully.</p>
+                </div>
+                <button
+                  onClick={() => setShowDeleteSuccess(false)}
+                  className="text-[#2E7D32] hover:text-[#1B5E20]"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Page Title */}
         <div className="bg-white border-b border-[#E5E5E5]">
           <div className="max-w-2xl mx-auto px-4 py-6">
@@ -269,15 +299,26 @@ function AccountContent() {
             <h3 className="text-sm font-medium text-[#757575] uppercase tracking-wide mb-4">Quick Links</h3>
             <div className="space-y-2">
               {store ? (
-                <Link
-                  href={`/store/${store.slug}`}
-                  className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
-                >
-                  <span className="text-[#222222]">My Store</span>
-                  <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
+                <>
+                  <Link
+                    href={`/store/${store.slug}`}
+                    className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
+                  >
+                    <span className="text-[#222222]">My Store</span>
+                    <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                  <Link
+                    href="/listing/create"
+                    className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
+                  >
+                    <span className="text-[#222222]">Create Listing</span>
+                    <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
+                </>
               ) : (
                 <Link
                   href="/store/create"
@@ -289,15 +330,6 @@ function AccountContent() {
                   </svg>
                 </Link>
               )}
-              <Link
-                href="/listing/create"
-                className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
-              >
-                <span className="text-[#222222]">Create Listing</span>
-                <svg className="w-5 h-5 text-[#757575]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </Link>
               <Link
                 href="/account/notifications"
                 className="flex items-center justify-between p-3 hover:bg-[#F5F5F5] transition-colors"
@@ -382,7 +414,19 @@ function AccountContent() {
 export default function AccountPage() {
   return (
     <ProtectedRoute>
-      <AccountContent />
+      <Suspense fallback={
+        <>
+          <Header />
+          <div className="min-h-screen bg-[#F5F5F5] flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin w-8 h-8 border-2 border-[#222222] border-t-transparent rounded-full mx-auto mb-4" />
+              <p className="text-sm text-[#757575]">Loading profile...</p>
+            </div>
+          </div>
+        </>
+      }>
+        <AccountContent />
+      </Suspense>
     </ProtectedRoute>
   );
 }
