@@ -64,8 +64,16 @@ interface Listing {
   condition: 'new' | 'like_new' | 'used' | 'parts';
   status: string;
   created_at: string;
+  section_id: string | null;
   listing_images: ListingImage[];
   listing_promotions?: Promotion[];
+}
+
+interface Section {
+  id: string;
+  name_en: string | null;
+  name_hy: string;
+  listing_count: number;
 }
 
 interface ReviewerInfo {
@@ -148,6 +156,8 @@ export default function StorePage() {
   const { user, loading: authLoading } = useAuth();
   const [store, setStore] = useState<Store | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -527,6 +537,25 @@ export default function StorePage() {
             listing_promotions: listing.listing_promotions || [],
           }));
           setListings(sortedListings);
+
+          // Fetch sections with listing counts
+          const { data: sectionsData, error: sectionsError } = await supabase
+            .from('store_sections')
+            .select('id, name_en, name_hy')
+            .eq('store_id', storeData.id)
+            .order('position', { ascending: true });
+
+          if (sectionsError) {
+            console.error('Error fetching sections:', sectionsError);
+          } else if (sectionsData) {
+            // Calculate listing counts for each section
+            const sectionsWithCounts = sectionsData.map(section => {
+              const count = sortedListings.filter(l => l.section_id === section.id).length;
+              return { ...section, listing_count: count };
+            });
+            // Only include sections with listings
+            setSections(sectionsWithCounts.filter(s => s.listing_count > 0));
+          }
         }
       } catch (err) {
         console.error('Error fetching store:', err);
@@ -906,27 +935,90 @@ export default function StorePage() {
             <h2 className="text-xl font-semibold text-[#222222]">
               Listings {listings.length > 0 && <span className="text-[#757575] font-normal">({listings.length})</span>}
             </h2>
-            {isOwner && isApproved && (
-              <Link
-                href="/listing/create"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-[#F56400] hover:bg-[#D95700] transition-colors text-sm font-medium text-white"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Listing
-              </Link>
-            )}
+            <div className="flex items-center gap-3">
+              {/* Manage Sections Link - only for owners */}
+              {isOwner && isApproved && (
+                <Link
+                  href={`/store/${store.slug}/sections`}
+                  className="inline-flex items-center gap-2 px-4 py-2 border border-[#E5E5E5] hover:border-[#222222] transition-colors text-sm font-medium text-[#222222]"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  Sections
+                </Link>
+              )}
+              {isOwner && isApproved && (
+                <Link
+                  href="/listing/create"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-[#F56400] hover:bg-[#D95700] transition-colors text-sm font-medium text-white"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Listing
+                </Link>
+              )}
+            </div>
           </div>
 
-          {/* Listings Grid */}
-          {listings.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
-              {listings.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
+          {/* Section Tabs - only show if sections with listings exist */}
+          {sections.length > 0 && (
+            <div className="mb-6 overflow-x-auto scrollbar-hide">
+              <div className="flex gap-2 pb-2">
+                {/* All Tab */}
+                <button
+                  onClick={() => setSelectedSectionId(null)}
+                  className={`flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors ${
+                    selectedSectionId === null
+                      ? 'bg-[#222222] text-white'
+                      : 'bg-white border border-[#E5E5E5] text-[#222222] hover:border-[#222222]'
+                  }`}
+                >
+                  All ({listings.length})
+                </button>
+                {/* Section Tabs */}
+                {sections.map((section) => (
+                  <button
+                    key={section.id}
+                    onClick={() => setSelectedSectionId(section.id)}
+                    className={`flex-shrink-0 px-4 py-2 text-sm font-medium transition-colors ${
+                      selectedSectionId === section.id
+                        ? 'bg-[#222222] text-white'
+                        : 'bg-white border border-[#E5E5E5] text-[#222222] hover:border-[#222222]'
+                    }`}
+                  >
+                    {section.name_en || section.name_hy} ({section.listing_count})
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
+          )}
+
+          {/* Listings Grid */}
+          {(() => {
+            const filteredListings = selectedSectionId
+              ? listings.filter(l => l.section_id === selectedSectionId)
+              : listings;
+            
+            return filteredListings.length > 0 ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                {filteredListings.map((listing) => (
+                  <ListingCard key={listing.id} listing={listing} />
+                ))}
+              </div>
+            ) : listings.length > 0 ? (
+              /* No listings in selected section */
+              <div className="bg-white border border-[#E5E5E5] p-8 text-center">
+                <p className="text-[#757575]">No listings in this section</p>
+                <button
+                  onClick={() => setSelectedSectionId(null)}
+                  className="mt-3 text-sm text-[#F56400] hover:text-[#D95700] font-medium"
+                >
+                  View all listings
+                </button>
+              </div>
+            ) : (
             /* Empty State */
             <div className="bg-white border border-[#E5E5E5] p-12 text-center">
               <div className="w-16 h-16 bg-[#F5F5F5] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -952,7 +1044,8 @@ export default function StorePage() {
                 </Link>
               )}
             </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Reviews Section */}

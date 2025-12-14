@@ -33,6 +33,12 @@ interface Store {
   user_id: string;
 }
 
+interface Section {
+  id: string;
+  name_en: string | null;
+  name_hy: string;
+}
+
 interface ImageFile {
   id: string;
   file: File;
@@ -43,6 +49,7 @@ interface ListingFormData {
   title: string;
   description: string;
   categoryId: string;
+  sectionId: string;
   price: string;
   currency: 'AMD' | 'USD';
   condition: 'new' | 'like_new' | 'used' | 'parts' | '';
@@ -77,12 +84,14 @@ function EditListingForm() {
     title: '',
     description: '',
     categoryId: '',
+    sectionId: '',
     price: '',
     currency: 'AMD',
     condition: '',
     deliveryMethods: ['pickup'],
     images: [],
   });
+  const [sections, setSections] = useState<Section[]>([]);
   const [existingImages, setExistingImages] = useState<ExistingImage[]>([]);
   const [isDeletingImage, setIsDeletingImage] = useState<string | null>(null);
   const [isSettingPrimary, setIsSettingPrimary] = useState<string | null>(null);
@@ -149,6 +158,18 @@ function EditListingForm() {
         setStore(listingData.store);
         setListingCurrency(listingData.currency || 'AMD');
 
+        // Fetch sections for this store
+        const { data: sectionsData, error: sectionsError } = await supabase
+          .from('store_sections')
+          .select('id, name_en, name_hy')
+          .eq('store_id', listingData.store.id)
+          .order('position', { ascending: true });
+
+        if (sectionsError) {
+          console.error('Error fetching sections:', sectionsError);
+        }
+        setSections(sectionsData || []);
+
         // Fetch active promotion for this listing
         const now = new Date().toISOString();
         const { data: promotionData } = await supabase
@@ -171,6 +192,7 @@ function EditListingForm() {
           title: listingData.title_en || '',
           description: listingData.description_en || '',
           categoryId: listingData.category_id || '',
+          sectionId: listingData.section_id || '',
           price: listingData.price?.toString() || '',
           currency: listingData.currency || 'AMD',
           condition: listingData.condition || '',
@@ -566,6 +588,7 @@ function EditListingForm() {
         .from('listings')
         .update({
           category_id: formData.categoryId,
+          section_id: formData.sectionId || null,
           title_en: formData.title.trim(),
           description_en: formData.description.trim() || null,
           price: newPrice,
@@ -837,6 +860,31 @@ function EditListingForm() {
                     ))}
                   </select>
                 </div>
+
+                {/* Section (only show if store has sections) */}
+                {sections.length > 0 && (
+                  <div>
+                    <label htmlFor="section" className="block text-sm font-medium text-[#222222] mb-2">
+                      Section <span className="text-[#757575] font-normal">(Optional)</span>
+                    </label>
+                    <select
+                      id="section"
+                      value={formData.sectionId}
+                      onChange={(e) => updateField('sectionId', e.target.value)}
+                      className="w-full px-4 py-3 border border-[#E5E5E5] focus:border-[#222222] focus:outline-none text-[#222222] bg-white"
+                    >
+                      <option value="">No section</option>
+                      {sections.map((section) => (
+                        <option key={section.id} value={section.id}>
+                          {section.name_en || section.name_hy}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-[#757575] mt-1">
+                      Organize this listing in a specific section of your store
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
